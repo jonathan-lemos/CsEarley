@@ -7,32 +7,66 @@ namespace CsEarley
     {
         public class Item
         {
-            private readonly string _nt;
-            private readonly IList<string> _rule;
-            private readonly int _dotpos;
-            
-            public string nt => _nt;
-            public IList<string> rule => _rule;
-
-            public Item(string nt, IList<string> rule, int dotpos = 0)
+            public string Nonterm { get; }
+            public IList<string> Rule { get; }
+            public int DotPos { get; }
+            private string _tos;
+            public Item(string nonterm, IList<string> rule, int dotPos = 0)
             {
-                this._nt = nt;
-                this._rule = rule;
-                this._dotpos = dotpos;
+                Nonterm = nonterm;
+                Rule = rule;
+                DotPos = dotPos;
+
+                IList<string> tmp = new List<string>(rule);
+                tmp.Insert(dotPos, ".");
+                _tos = String.Join(" ", tmp);
+            }
+            
+            public string Current => Rule[DotPos];
+
+            public bool IsReduce()
+            { 
+                return DotPos >= Rule.Count;  
+            } 
+
+            public Item Advanced()
+            {
+                if (IsReduce())
+                {
+                    throw new InvalidOperationException("Cannot advance a reduce item.");
+                }
+                return new Item(Nonterm, Rule, DotPos + 1);
             }
 
             public override string ToString()
             {
-                return String.Join(" ", _rule);
+                return _tos;
             }
         }
-        
-        private readonly Grammar _grammar;
-        public Grammar Grammar => _grammar;
-        
+
+        public class TreeNode
+        {
+            public string Content { get; }
+            public IList<TreeNode> Children { get; }
+
+            public TreeNode(string type, IList<TreeNode> children)
+            {
+                this.Content = type;
+                this.Children = children;
+            }
+
+            public TreeNode(string content)
+            {
+                this.Content = content;
+            }
+        }
+
+        public Grammar Grammar { get; }
+
         public Parser(Grammar g)
         {
-            this._grammar = g;
+            this.Grammar = g;
         }
+        
     }
 }
