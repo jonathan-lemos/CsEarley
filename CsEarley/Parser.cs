@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace CsEarley
 {
@@ -10,7 +12,7 @@ namespace CsEarley
             public string Nonterm { get; }
             public IList<string> Rule { get; }
             public int DotPos { get; }
-            private string _tos;
+            private string _string;
             public Item(string nonterm, IList<string> rule, int dotPos = 0)
             {
                 Nonterm = nonterm;
@@ -19,7 +21,7 @@ namespace CsEarley
 
                 IList<string> tmp = new List<string>(rule);
                 tmp.Insert(dotPos, ".");
-                _tos = String.Join(" ", tmp);
+                _string = String.Join(" ", tmp);
             }
             
             public string Current => Rule[DotPos];
@@ -40,24 +42,20 @@ namespace CsEarley
 
             public override string ToString()
             {
-                return _tos;
+                return _string;
             }
         }
 
         public class TreeNode
         {
-            public string Content { get; }
-            public IList<TreeNode> Children { get; }
+            public string Token { get; }
+            private readonly IList<TreeNode> _children;
+            public IEnumerable<TreeNode> Children => _children;
 
-            public TreeNode(string type, IList<TreeNode> children)
+            public TreeNode(string token, IList<TreeNode> children)
             {
-                this.Content = type;
-                this.Children = children;
-            }
-
-            public TreeNode(string content)
-            {
-                this.Content = content;
+                Token = token;
+                _children = children;
             }
         }
 
@@ -67,6 +65,50 @@ namespace CsEarley
         {
             this.Grammar = g;
         }
-        
+
+        public void Recognize(string s)
+        {
+            var words = Regex.Split(s, "\\s+");
+            var newStart = Grammar.Start + "'";
+            var table = new List<ISet<(Item Item, int Index)>>();
+            for (int i = 0; i < words.Length + 1; ++i)
+            {
+                table.Add(new HashSet<(Item Item, int Index)>());
+            }
+            table[0].Add((new Item(newStart, new List<string> {Grammar.Start}), 0));
+
+            for (var i = 0; i < table.Count; ++i)
+            {
+                var entries = new Queue<(Item Item, int Index)>(table[i]);
+                while (entries.Count > 0)
+                {
+                    var state = entries.Dequeue();
+                    if (!state.Item.IsReduce())
+                    {
+                        if (Grammar.Nonterms.Contains(state.Item.Current))
+                        {
+                            foreach (var prod in Grammar[state.Item.Current])
+                            {
+                                var newItem = (Item: new Item(state.Item.Nonterm, prod), Index: i);
+                                entries.Enqueue(newItem);
+                                table[i].Add(newItem);
+                            }
+                        }
+                        else
+                        {
+                            if (state.Item.Current == words[i])
+                            {
+                                table[i + 1].Add((Item: state.Item.Advanced(), Index: state.Index));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        
+                    }
+                }
+            }
+        }
+
     }
 }

@@ -6,7 +6,14 @@ namespace CsEarley
     {
         public static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            var gram = new Grammar(new[]
+            {
+                "S -> A B C",
+                "A -> a | #",
+                "B -> A c | b",
+                "C -> C e S | A | d"
+            });
+            Console.WriteLine(gram.ToString());
         }
     }
 }
