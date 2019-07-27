@@ -8,12 +8,13 @@ namespace CsEarley
         {
             var gram = new Grammar(new[]
             {
-                "S -> A B C",
-                "A -> a | #",
-                "B -> A c | b",
-                "C -> C e S | A | d"
+                "S -> S + M | M",
+                "M -> M * T | T",
+                "T -> number"
             });
-            Console.WriteLine(gram.ToString());
+            var parser = new Parser(gram);
+            Console.WriteLine(parser.Recognize("number + number * number"));
+            Console.WriteLine("foo");
         }
     }
 }

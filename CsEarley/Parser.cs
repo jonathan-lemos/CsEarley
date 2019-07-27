@@ -7,7 +7,7 @@ namespace CsEarley
 {
     public class Parser
     {
-        public class Item
+        public class Item : IEquatable<Item>
         {
             public string Nonterm { get; }
             public IList<string> Rule { get; }
@@ -21,7 +21,7 @@ namespace CsEarley
 
                 IList<string> tmp = new List<string>(rule);
                 tmp.Insert(dotPos, ".");
-                _string = String.Join(" ", tmp);
+                _string = Nonterm + " -> " + string.Join(" ", tmp);
             }
             
             public string Current => Rule[DotPos];
@@ -44,6 +44,29 @@ namespace CsEarley
             {
                 return _string;
             }
+
+            public bool Equals(Item other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return string.Equals(Nonterm, other.Nonterm) && Equals(Rule, other.Rule) && DotPos == other.DotPos;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return ReferenceEquals(this, obj) || obj is Item other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hashCode = (Nonterm != null ? Nonterm.GetHashCode() : 0);
+                    hashCode = (hashCode * 397) ^ (Rule != null ? Rule.GetHashCode() : 0);
+                    hashCode = (hashCode * 397) ^ DotPos;
+                    return hashCode;
+                }
+            }
         }
 
         public class TreeNode
@@ -52,10 +75,10 @@ namespace CsEarley
             private readonly IList<TreeNode> _children;
             public IEnumerable<TreeNode> Children => _children;
 
-            public TreeNode(string token, IList<TreeNode> children)
+            public TreeNode(string token, IList<TreeNode> children = null)
             {
                 Token = token;
-                _children = children;
+                _children = children ?? new List<TreeNode>();
             }
         }
 
@@ -66,7 +89,7 @@ namespace CsEarley
             this.Grammar = g;
         }
 
-        public void Recognize(string s)
+        public bool Recognize(string s)
         {
             var words = Regex.Split(s, "\\s+");
             var newStart = Grammar.Start + "'";
@@ -82,32 +105,48 @@ namespace CsEarley
                 var entries = new Queue<(Item Item, int Index)>(table[i]);
                 while (entries.Count > 0)
                 {
-                    var state = entries.Dequeue();
-                    if (!state.Item.IsReduce())
+                    var (item, index) = entries.Dequeue();
+                    if (!item.IsReduce())
                     {
-                        if (Grammar.Nonterms.Contains(state.Item.Current))
+                        if (Grammar.Nonterms.Contains(item.Current))
                         {
-                            foreach (var prod in Grammar[state.Item.Current])
+                            foreach (var prod in Grammar[item.Current])
                             {
-                                var newItem = (Item: new Item(state.Item.Nonterm, prod), Index: i);
-                                entries.Enqueue(newItem);
-                                table[i].Add(newItem);
+                                var newItem = (Item: new Item(item.Current, prod), Index: i);
+                                if (!table[i].Contains(newItem))
+                                { 
+                                    entries.Enqueue(newItem);
+                                    table[i].Add(newItem);   
+                                }
                             }
                         }
                         else
                         {
-                            if (state.Item.Current == words[i])
+                            if (i < words.Length && item.Current == words[i])
                             {
-                                table[i + 1].Add((Item: state.Item.Advanced(), Index: state.Index));
+                                table[i + 1].Add((Item: item.Advanced(), Index: index));
                             }
                         }
                     }
                     else
                     {
-                        
+                        foreach (var (tableItem, tableIndex) in table[index])
+                        {
+                            if (!tableItem.IsReduce() && tableItem.Current == item.Nonterm)
+                            { 
+                                var newItem = (Item: tableItem.Advanced(), Index: tableIndex);
+                                if (!table[i].Contains(newItem))
+                                {
+                                    table[i].Add(newItem);
+                                    entries.Enqueue(newItem);   
+                                }
+                            }
+                        }
                     }
                 }
             }
+
+            return true;
         }
 
     }
