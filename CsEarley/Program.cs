@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.RegularExpressions;
 
 namespace CsEarley
 {
@@ -13,7 +14,7 @@ namespace CsEarley
                 "T -> number"
             });
             var parser = new Parser(gram);
-            Console.WriteLine(parser.Recognize("number + number * number"));
+            var tree = parser.Parse(Regex.Split("number + number * number", "\\s+"));
             Console.WriteLine("foo");
         }
     }

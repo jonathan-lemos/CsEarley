@@ -71,14 +71,60 @@ namespace CsEarley
 
         public class TreeNode
         {
-            public string Token { get; }
+            public Item Item { get; }
             private readonly IList<TreeNode> _children;
             public IEnumerable<TreeNode> Children => _children;
 
-            public TreeNode(string token, IList<TreeNode> children = null)
+            public TreeNode(Item item, IList<TreeNode> children = null)
             {
-                Token = token;
+                Item = item;
                 _children = children ?? new List<TreeNode>();
+            }
+        }
+
+        private class EarleyItem
+        {
+            public Item Item { get; }
+            public int Index { get; }
+            public EarleyItem Prev { get; }
+
+            public EarleyItem(Item item, int index, EarleyItem prev)
+            {
+                Item = item;
+                Index = index;
+                Prev = prev;
+            }
+
+            public void Deconstruct(out Item item, out int index)
+            {
+                item = Item;
+                index = Index;
+            }
+
+            protected bool Equals(EarleyItem other)
+            {
+                return Equals(Item, other.Item) && Index == other.Index;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((EarleyItem) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((Item != null ? Item.GetHashCode() : 0) * 397) ^ Index;
+                }
+            }
+
+            public override string ToString()
+            {
+                return $"({Item}, {Index})";
             }
         }
 
@@ -89,30 +135,34 @@ namespace CsEarley
             this.Grammar = g;
         }
 
-        public bool Recognize(string s)
+        public TreeNode Parse(IEnumerable<string> tokens)
         {
-            var words = Regex.Split(s, "\\s+");
+            var words = new List<string>(tokens);
             var newStart = Grammar.Start + "'";
-            var table = new List<ISet<(Item Item, int Index)>>();
-            for (int i = 0; i < words.Length + 1; ++i)
+            var table = new List<ISet<EarleyItem>>();
+            for (var i = 0; i < words.Count + 1; ++i)
             {
-                table.Add(new HashSet<(Item Item, int Index)>());
+                table.Add(new OrderedSet<EarleyItem>());
             }
-            table[0].Add((new Item(newStart, new List<string> {Grammar.Start}), 0));
+            var startRule = new Item(newStart, new List<string> {Grammar.Start});
+            var endRule = startRule.Advanced();
+            
+            table[0].Add(new EarleyItem(startRule, 0, null));
 
             for (var i = 0; i < table.Count; ++i)
             {
-                var entries = new Queue<(Item Item, int Index)>(table[i]);
+                var entries = new Queue<EarleyItem>(table[i]);
                 while (entries.Count > 0)
                 {
-                    var (item, index) = entries.Dequeue();
+                    var earleyItem = entries.Dequeue();
+                    var (item, index) = earleyItem;
                     if (!item.IsReduce())
                     {
                         if (Grammar.Nonterms.Contains(item.Current))
                         {
                             foreach (var prod in Grammar[item.Current])
                             {
-                                var newItem = (Item: new Item(item.Current, prod), Index: i);
+                                var newItem = new EarleyItem(new Item(item.Current, prod), i, earleyItem);
                                 if (!table[i].Contains(newItem))
                                 { 
                                     entries.Enqueue(newItem);
@@ -122,9 +172,9 @@ namespace CsEarley
                         }
                         else
                         {
-                            if (i < words.Length && item.Current == words[i])
+                            if (i < words.Count && item.Current == words[i])
                             {
-                                table[i + 1].Add((Item: item.Advanced(), Index: index));
+                                table[i + 1].Add(new EarleyItem(item.Advanced(), index, earleyItem));
                             }
                         }
                     }
@@ -134,7 +184,7 @@ namespace CsEarley
                         {
                             if (!tableItem.IsReduce() && tableItem.Current == item.Nonterm)
                             { 
-                                var newItem = (Item: tableItem.Advanced(), Index: tableIndex);
+                                var newItem = new EarleyItem(tableItem.Advanced(), tableIndex, earleyItem);
                                 if (!table[i].Contains(newItem))
                                 {
                                     table[i].Add(newItem);
@@ -146,7 +196,22 @@ namespace CsEarley
                 }
             }
 
-            return true;
+            var finalRule = table.Last().First(x => x.Item.Equals(endRule));
+            if (finalRule == null)
+            {
+                return null;
+            }
+
+            var parsePath = new List<Item>();
+            for (var rule = finalRule; rule != null; rule = rule.Prev)
+            {
+                parsePath.Add(rule.Item);
+            }
+            parsePath.RemoveAt(parsePath.Count - 1);
+            parsePath.Reverse();
+            parsePath.RemoveAt(parsePath.Count - 1);
+            
+            return null;
         }
 
     }
