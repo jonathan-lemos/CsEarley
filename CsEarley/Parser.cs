@@ -13,6 +13,7 @@ namespace CsEarley
             public IList<string> Rule { get; }
             public int DotPos { get; }
             private string _string;
+
             public Item(string nonterm, IList<string> rule, int dotPos = 0)
             {
                 Nonterm = nonterm;
@@ -23,13 +24,13 @@ namespace CsEarley
                 tmp.Insert(dotPos, ".");
                 _string = Nonterm + " -> " + string.Join(" ", tmp);
             }
-            
+
             public string Current => Rule[DotPos];
 
             public bool IsReduce()
-            { 
-                return DotPos >= Rule.Count;  
-            } 
+            {
+                return DotPos >= Rule.Count;
+            }
 
             public Item Advanced()
             {
@@ -37,6 +38,7 @@ namespace CsEarley
                 {
                     throw new InvalidOperationException("Cannot advance a reduce item.");
                 }
+
                 return new Item(Nonterm, Rule, DotPos + 1);
             }
 
@@ -144,9 +146,10 @@ namespace CsEarley
             {
                 table.Add(new OrderedSet<EarleyItem>());
             }
+
             var startRule = new Item(newStart, new List<string> {Grammar.Start});
             var endRule = startRule.Advanced();
-            
+
             table[0].Add(new EarleyItem(startRule, 0, null));
 
             for (var i = 0; i < table.Count; ++i)
@@ -164,9 +167,9 @@ namespace CsEarley
                             {
                                 var newItem = new EarleyItem(new Item(item.Current, prod), i, earleyItem);
                                 if (!table[i].Contains(newItem))
-                                { 
+                                {
                                     entries.Enqueue(newItem);
-                                    table[i].Add(newItem);   
+                                    table[i].Add(newItem);
                                 }
                             }
                         }
@@ -183,12 +186,12 @@ namespace CsEarley
                         foreach (var (tableItem, tableIndex) in table[index])
                         {
                             if (!tableItem.IsReduce() && tableItem.Current == item.Nonterm)
-                            { 
+                            {
                                 var newItem = new EarleyItem(tableItem.Advanced(), tableIndex, earleyItem);
                                 if (!table[i].Contains(newItem))
                                 {
                                     table[i].Add(newItem);
-                                    entries.Enqueue(newItem);   
+                                    entries.Enqueue(newItem);
                                 }
                             }
                         }
@@ -202,17 +205,43 @@ namespace CsEarley
                 return null;
             }
 
-            var parsePath = new List<Item>();
-            for (var rule = finalRule; rule != null; rule = rule.Prev)
-            {
-                parsePath.Add(rule.Item);
-            }
-            parsePath.RemoveAt(parsePath.Count - 1);
-            parsePath.Reverse();
-            parsePath.RemoveAt(parsePath.Count - 1);
-            
-            return null;
-        }
 
+            var setIndex = table.Count - 1;
+
+            TreeNode CompleteRule(EarleyItem earleyItem)
+            {
+                var children = new List<TreeNode>();
+                var (item, _) = earleyItem;
+                var itemIndex = item.DotPos;
+                while (setIndex >= 0 && itemIndex > 0)
+                {
+                    var prevSymbol = item.Rule[itemIndex - 1];
+
+                    if (Grammar.Terms.Contains(prevSymbol))
+                    {
+                        setIndex--;
+                        var target = table[setIndex].First(x => !x.Item.IsReduce() && x.Item.Current == prevSymbol);
+                        children.Add(new TreeNode(target.Item));
+                    }
+                    else
+                    {
+                        var target = table[setIndex].First(x => x.Item.IsReduce() && x.Item.Nonterm == prevSymbol);
+                        children.Add(CompleteRule(target));
+                    }
+
+                    itemIndex--;
+                }
+
+                if (setIndex < 0)
+                {
+                    throw new InvalidOperationException("This is a bug. Ran out of EarleySets to build the tree with.");
+                }
+
+                children.Reverse();
+                return new TreeNode(item, children);
+            }
+
+            return CompleteRule(finalRule);
+        }
     }
 }
