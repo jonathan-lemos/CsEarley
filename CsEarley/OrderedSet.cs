@@ -124,6 +124,14 @@ namespace CsEarley
         
         public T Last => _list.Last.Value;
 
+        public IEnumerable<T> MutableIterator()
+        {
+            for (var ptr = _list.First; ptr != null; ptr = ptr.Next)
+            {
+                yield return ptr.Value;
+            }
+        }
+
         public bool Overlaps(IEnumerable<T> enumerable)
         {
             return enumerable.Any(Contains);

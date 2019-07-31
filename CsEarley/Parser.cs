@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -40,6 +41,15 @@ namespace CsEarley
                 }
 
                 return new Item(Nonterm, Rule, DotPos + 1);
+            }
+
+            public Item Retarded()
+            {
+                if (DotPos == 0)
+                {
+                    throw new InvalidOperationException("Cannot retard an item that hasn't advanced.");
+                }
+                return new Item(Nonterm, Rule, DotPos - 1);
             }
 
             public override string ToString()
@@ -141,7 +151,7 @@ namespace CsEarley
         {
             var words = new List<string>(tokens);
             var newStart = Grammar.Start + "'";
-            var table = new List<ISet<EarleyItem>>();
+            var table = new List<OrderedSet<EarleyItem>>();
             for (var i = 0; i < words.Count + 1; ++i)
             {
                 table.Add(new OrderedSet<EarleyItem>());
@@ -149,28 +159,27 @@ namespace CsEarley
 
             var startRule = new Item(newStart, new List<string> {Grammar.Start});
             var endRule = startRule.Advanced();
-
+            var epsilon = new List<string> {"#"};
             table[0].Add(new EarleyItem(startRule, 0, null));
 
             for (var i = 0; i < table.Count; ++i)
             {
-                var entries = new Queue<EarleyItem>(table[i]);
-                while (entries.Count > 0)
+                foreach (var earleyItem in table[i].MutableIterator())
                 {
-                    var earleyItem = entries.Dequeue();
                     var (item, index) = earleyItem;
                     if (!item.IsReduce())
                     {
-                        if (Grammar.Nonterms.Contains(item.Current))
+                        if (item.Rule.SequenceEqual(epsilon))
+                        {
+                            var newItem = new EarleyItem(item.Advanced(), i, earleyItem);
+                            table[i].Add(newItem);
+                        }
+                        else if (Grammar.Nonterms.Contains(item.Current))
                         {
                             foreach (var prod in Grammar[item.Current])
                             {
                                 var newItem = new EarleyItem(new Item(item.Current, prod), i, earleyItem);
-                                if (!table[i].Contains(newItem))
-                                {
-                                    entries.Enqueue(newItem);
-                                    table[i].Add(newItem);
-                                }
+                                table[i].Add(newItem);
                             }
                         }
                         else
@@ -183,16 +192,12 @@ namespace CsEarley
                     }
                     else
                     {
-                        foreach (var (tableItem, tableIndex) in table[index])
+                        foreach (var (tableItem, tableIndex) in table[index].MutableIterator())
                         {
                             if (!tableItem.IsReduce() && tableItem.Current == item.Nonterm)
                             {
                                 var newItem = new EarleyItem(tableItem.Advanced(), tableIndex, earleyItem);
-                                if (!table[i].Contains(newItem))
-                                {
-                                    table[i].Add(newItem);
-                                    entries.Enqueue(newItem);
-                                }
+                                table[i].Add(newItem);
                             }
                         }
                     }
@@ -204,44 +209,18 @@ namespace CsEarley
             {
                 return null;
             }
-
-
-            var setIndex = table.Count - 1;
-
+            
             TreeNode CompleteRule(EarleyItem earleyItem)
             {
-                var children = new List<TreeNode>();
-                var (item, _) = earleyItem;
-                var itemIndex = item.DotPos;
-                while (setIndex >= 0 && itemIndex > 0)
+                var stack = new List<(EarleyItem, IList<TreeNode>)>();
+                while (earleyItem.Prev != null)
                 {
-                    var prevSymbol = item.Rule[itemIndex - 1];
-
-                    if (Grammar.Terms.Contains(prevSymbol))
-                    {
-                        setIndex--;
-                        var target = table[setIndex].First(x => !x.Item.IsReduce() && x.Item.Current == prevSymbol);
-                        children.Add(new TreeNode(target.Item));
-                    }
-                    else
-                    {
-                        var target = table[setIndex].First(x => x.Item.IsReduce() && x.Item.Nonterm == prevSymbol);
-                        children.Add(CompleteRule(target));
-                    }
-
-                    itemIndex--;
+                    stack.Add((earleyItem, new List<TreeNode>()));
                 }
-
-                if (setIndex < 0)
-                {
-                    throw new InvalidOperationException("This is a bug. Ran out of EarleySets to build the tree with.");
-                }
-
-                children.Reverse();
-                return new TreeNode(item, children);
             }
 
-            return CompleteRule(finalRule);
+            var tree = CompleteRule(finalRule);
+            return tree;
         }
     }
 }

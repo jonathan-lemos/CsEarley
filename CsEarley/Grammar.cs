@@ -132,6 +132,7 @@ namespace CsEarley
                 }
             }
 
+            // Get rid of all terminals in the dictionary. Then return that dictionary
             return ret.Where(x => !_terms.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value);
         }
 
@@ -251,7 +252,7 @@ namespace CsEarley
                     // Initialize a blank set for this nonterm if it's not currently in our rules dict
                     if (!_rules.ContainsKey(nt))
                     {
-                        _rules[nt] = new HashSet<IList<string>>();
+                        _rules[nt] = new OrderedSet<IList<string>>();
                     }
                     
                     // Make sure if the production contains epsilon, then epsilon is the only token
@@ -269,7 +270,9 @@ namespace CsEarley
                 }
             }
 
+            // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
             _terms = this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)).ToHashSet();
+            
             _epsilonProducers = ComputeEpsilonProducers();
             _firstSets = ComputeFirstSets();
             _followSets = ComputeFollowSets();
