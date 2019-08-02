@@ -33,9 +33,9 @@ namespace CsEarley
         private ISet<string> ComputeEpsilonProducers()
         {
             // "#" is the epsilon token because we can't type the actual epsilon.
-            var epsilon = new HashSet<string>{"#"};
+            var epsilon = new OrderedSet<string>{"#"};
 
-            var ret = new HashSet<string>{"#"};
+            var ret = new OrderedSet<string>{"#"};
             // While the above set is changing.
             while (true)
             {
@@ -61,20 +61,20 @@ namespace CsEarley
                 }
             }
 
-            return ret.Except(epsilon).ToHashSet();
+            return new OrderedSet<string>(ret.Except(epsilon));
         }
 
         private IDictionary<string, ISet<string>> ComputeFirstSets()
         {
-            var epsilon = new HashSet<string> {"#"};
+            var epsilon = new OrderedSet<string> {"#"};
 
             // Initialize each nonterm to be an empty first set
-            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new HashSet<string>());
+            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
 
             // The first set of a token is always that token
             foreach (var t in _terms)
             {
-                ret.Add(t, new HashSet<string> {t});
+                ret.Add(t, new OrderedSet<string> {t});
             }
 
             while (true)
@@ -138,17 +138,17 @@ namespace CsEarley
 
         private IDictionary<string, ISet<string>> ComputeFollowSets()
         {
-            var epsilon = new HashSet<string> {"#"};
+            var epsilon = new OrderedSet<string> {"#"};
 
             // Create first sets including terminals (which have first sets of only themselves)
             var fs = new Dictionary<string, ISet<string>>(_firstSets);
             foreach (var term in _terms)
             {
-                fs.Add(term, new HashSet<string> {term});
+                fs.Add(term, new OrderedSet<string> {term});
             }
 
             // Start off with blank follow sets except for the start symbol, which can always be followed by "$", the end symbol.
-            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new HashSet<string>());
+            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
             ret[Start].Add("$");
 
             while (true)
@@ -210,7 +210,7 @@ namespace CsEarley
         {
             _rules = new Dictionary<string, ISet<IList<string>>>();
             _prods = new List<KeyValuePair<string, IList<string>>>();
-            _nonterms = new HashSet<string>();
+            _nonterms = new OrderedSet<string>();
 
             // For each input rule
             foreach (var rule in rules)
@@ -271,7 +271,7 @@ namespace CsEarley
             }
 
             // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
-            _terms = this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)).ToHashSet();
+            _terms = new OrderedSet<string>(this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)));
             
             _epsilonProducers = ComputeEpsilonProducers();
             _firstSets = ComputeFirstSets();

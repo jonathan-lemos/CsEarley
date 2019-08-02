@@ -164,28 +164,38 @@ namespace CsEarley
 
             for (var i = 0; i < table.Count; ++i)
             {
+                // Mutable iterator allows us to add items to the set and still iterate through it
                 foreach (var earleyItem in table[i].MutableIterator())
                 {
                     var (item, index) = earleyItem;
+                    // If this is not a reduce item
                     if (!item.IsReduce())
                     {
+                        // If this is an epsilon production
                         if (item.Rule.SequenceEqual(epsilon))
                         {
+                            // Add an item that completes on epsilon
                             var newItem = new EarleyItem(item.Advanced(), i, earleyItem);
                             table[i].Add(newItem);
                         }
+                        // Otherwise if the next symbol is a Nonterminal
                         else if (Grammar.Nonterms.Contains(item.Current))
                         {
+                            // For each production that nonterminal can produce
                             foreach (var prod in Grammar[item.Current])
                             {
+                                // Add a new item for each of those productions (compute the LR(0) closure)
                                 var newItem = new EarleyItem(new Item(item.Current, prod), i, earleyItem);
                                 table[i].Add(newItem);
                             }
                         }
+                        // If the next symbol is a Terminal
                         else
                         {
+                            // If the current token is equal to this terminal
                             if (i < words.Count && item.Current == words[i])
                             {
+                                // Shift on this token and add it to the next set
                                 table[i + 1].Add(new EarleyItem(item.Advanced(), index, earleyItem));
                             }
                         }
@@ -210,16 +220,43 @@ namespace CsEarley
                 return null;
             }
             
-            TreeNode CompleteRule(EarleyItem earleyItem)
+            TreeNode CompleteRule(ref EarleyItem earleyItem)
             {
-                var stack = new List<(EarleyItem, IList<TreeNode>)>();
-                while (earleyItem.Prev != null)
+                if (earleyItem.Item.IsReduce())
                 {
-                    stack.Add((earleyItem, new List<TreeNode>()));
+                    var children = new List<TreeNode>();
+                    var oldItem = earleyItem.Item;
+                    foreach (var token in earleyItem.Item.Rule.Reverse())
+                    {
+                        earleyItem = earleyItem.Prev;
+                        children.Add(CompleteRule(ref earleyItem));
+                    }
+
+                    children.Reverse();
+                    return new TreeNode(oldItem, children);
+                }
+                else
+                {
+                    if (Grammar.Terms.Contains(earleyItem.Item.Current))
+                    {
+                        return new TreeNode(earleyItem.Item);
+                    }
+                    else
+                    {
+                        if (earleyItem.Prev != null)
+                        { 
+                            earleyItem = earleyItem.Prev; 
+                            return CompleteRule(ref earleyItem);   
+                        }
+                        else
+                        {
+                            return new TreeNode(earleyItem.Item);
+                        }
+                    }
                 }
             }
 
-            var tree = CompleteRule(finalRule);
+            var tree = CompleteRule(ref finalRule);
             return tree;
         }
     }
