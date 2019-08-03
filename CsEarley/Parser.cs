@@ -49,6 +49,7 @@ namespace CsEarley
                 {
                     throw new InvalidOperationException("Cannot retard an item that hasn't advanced.");
                 }
+
                 return new Item(Nonterm, Rule, DotPos - 1);
             }
 
@@ -86,6 +87,10 @@ namespace CsEarley
             public Item Item { get; }
             private readonly IList<TreeNode> _children;
             public IEnumerable<TreeNode> Children => _children;
+
+            public TreeNode(Item item, TreeNode child) : this(item, new List<TreeNode> {child})
+            {
+            }
 
             public TreeNode(Item item, IList<TreeNode> children = null)
             {
@@ -162,6 +167,8 @@ namespace CsEarley
             var epsilon = new List<string> {"#"};
             table[0].Add(new EarleyItem(startRule, 0, null));
 
+            // Each entry of the table corresponds a token in the input sequence with one extra for the start rule
+            // In essence, each (LR(0)) state in the table represents the possible derivation paths at that point
             for (var i = 0; i < table.Count; ++i)
             {
                 // Mutable iterator allows us to add items to the set and still iterate through it
@@ -215,13 +222,18 @@ namespace CsEarley
             }
 
             var finalRule = table.Last().First(x => x.Item.Equals(endRule));
+            var finalRuleCpy = finalRule;
             if (finalRule == null)
             {
                 return null;
             }
-            
+
             TreeNode CompleteRule(ref EarleyItem earleyItem)
             {
+                if (earleyItem == null)
+                {
+                    return null;
+                }
                 if (earleyItem.Item.IsReduce())
                 {
                     var children = new List<TreeNode>();
@@ -233,25 +245,18 @@ namespace CsEarley
                     }
 
                     children.Reverse();
-                    return new TreeNode(oldItem, children);
+                    return new TreeNode(oldItem, children.Where(x => x != null).ToList());
                 }
                 else
                 {
-                    if (Grammar.Terms.Contains(earleyItem.Item.Current))
+                    if (Grammar.Nonterms.Contains(earleyItem.Item.Current))
                     {
-                        return new TreeNode(earleyItem.Item);
+                        earleyItem = earleyItem.Prev;
+                        return CompleteRule(ref earleyItem);
                     }
                     else
                     {
-                        if (earleyItem.Prev != null)
-                        { 
-                            earleyItem = earleyItem.Prev; 
-                            return CompleteRule(ref earleyItem);   
-                        }
-                        else
-                        {
-                            return new TreeNode(earleyItem.Item);
-                        }
+                        return new TreeNode(earleyItem.Item);
                     }
                 }
             }

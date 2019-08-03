@@ -9,12 +9,12 @@ namespace CsEarley
         {
             var gram = new Grammar(new[]
             {
-                "S -> S + M | M",
-                "M -> M * T | T",
-                "T -> number"
+                "E -> E + T | T",
+                "T -> T * F | F",
+                "F -> ( E ) | num"
             });
             var parser = new Parser(gram);
-            var tree = parser.Parse(Regex.Split("number + number * number", "\\s+"));
+            var tree = parser.Parse(Regex.Split("( num + num ) * num", "\\s+"));
             Console.WriteLine("foo");
         }
     }
