@@ -12,6 +12,7 @@ namespace CsEarley
         private readonly IDictionary<string, ISet<IList<string>>> _rules;
         private readonly ISet<string> _terms;
         private readonly ISet<string> _nonterms;
+        private readonly ISet<string> _symbols;
         private readonly ISet<string> _epsilonProducers;
         private readonly IDictionary<string, ISet<string>> _firstSets;
         private readonly IDictionary<string, ISet<string>> _followSets;
@@ -20,6 +21,7 @@ namespace CsEarley
         public string Start { get; }
         public IEnumerable<string> Nonterms => _nonterms;
         public IEnumerable<string> Terms => _terms;
+        public IEnumerable<string> Symbols => _symbols;
 
         public IReadOnlyDictionary<string, ISet<string>> FirstSets =>
             new ReadOnlyDictionary<string, ISet<string>>(_firstSets);
@@ -272,6 +274,8 @@ namespace CsEarley
 
             // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
             _terms = new OrderedSet<string>(this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)));
+            _symbols = new OrderedSet<string>(_terms);
+            _symbols.UnionWith(_nonterms);
             
             _epsilonProducers = ComputeEpsilonProducers();
             _firstSets = ComputeFirstSets();

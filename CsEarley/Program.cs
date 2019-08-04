@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace CsEarley
@@ -13,8 +14,10 @@ namespace CsEarley
                 "T -> T * F | F",
                 "F -> ( E ) | num"
             });
+
             var parser = new Parser(gram);
-            var tree = parser.Parse(Regex.Split("( num + num ) * num", "\\s+"));
+            var tokens = parser.Lex("( 2 + 3 ) * 4", new[] {("num", "[0-9]+")});
+            var tree = parser.Parse(tokens);
             Console.WriteLine("foo");
         }
     }
