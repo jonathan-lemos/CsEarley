@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Security.Principal;
@@ -26,7 +28,7 @@ namespace CsEarley
             /// <summary>
             /// The tokens this rule needs to match.
             /// </summary>
-            public readonly IList<string> Rule;
+            public readonly IReadOnlyList<string> Rule;
 
             /// <summary>
             /// The position of the dot within this rule.
@@ -44,15 +46,15 @@ namespace CsEarley
             /// <param name="nonterm">The Nonterminal this <c>Item</c> produces.</param>
             /// <param name="rule">The Tokens this rule needs to match.</param>
             /// <param name="dotPos">The position of the dot within this rule.</param>
-            public Item(string nonterm, IList<string> rule, int dotPos = 0)
+            public Item(string nonterm, IEnumerable<string> rule, int dotPos = 0)
             {
                 Nonterm = nonterm;
-                Rule = rule;
+                Rule = ImmutableList<string>.Empty.AddRange(rule);
                 DotPos = dotPos;
 
                 // Insert the dot in the proper location and use it to create the string.
                 // We precalculate this string so ToString() is not O(n).
-                IList<string> tmp = new List<string>(rule);
+                IList<string> tmp = new List<string>(Rule);
                 tmp.Insert(dotPos, ".");
                 _string = Nonterm + " -> " + string.Join(" ", tmp);
             }
@@ -121,14 +123,15 @@ namespace CsEarley
 
             /// <summary>
             /// If this <see cref="TreeNode"/> was produced from a terminal, this contains the <i>raw</i> token that produced it (not the terminal itself).
+            /// Otherwise it contains the nonterminal this <see cref="TreeNode"/> corresponds to.
             /// </summary>
             /// Note that if this is set, this <see cref="TreeNode"/> is a leaf node (no children).
-            public readonly Optional<string> Token;
+            public readonly string Token;
 
             /// <summary>
             /// The children of this <see cref="TreeNode"/>.
             /// </summary>
-            public readonly IEnumerable<TreeNode> Children;
+            public readonly IReadOnlyList<TreeNode> Children;
 
             /// <summary>
             /// Constructs a <see cref="TreeNode"/> (leaf node) from a terminal.
@@ -139,7 +142,7 @@ namespace CsEarley
             {
                 Item = item;
                 Token = token;
-                Children = new List<TreeNode>();
+                Children = ImmutableList<TreeNode>.Empty;
             }
 
             /// <summary>
@@ -156,15 +159,18 @@ namespace CsEarley
             /// </summary>
             /// <param name="item">The <see cref="Item"/> that produced this <see cref="TreeNode"/></param>
             /// <param name="children">A list of children for this <see cref="TreeNode"/>. If this is <c>null</c> or not declared, this <see cref="TreeNode"/> will have no children.</param>
-            public TreeNode(Item item, IList<TreeNode> children = null)
+            public TreeNode(Item item, IEnumerable<TreeNode> children = null)
             {
                 Item = item;
-                Children = children ?? new List<TreeNode>();
+                Children = children != null ? ImmutableList<TreeNode>.Empty.AddRange(children) : ImmutableList<TreeNode>.Empty;
+                Token = item.IsReduce() ? item.Nonterm : item.Current;
             }
 
             public IEnumerator<TreeNode> GetEnumerator() => Children.GetEnumerator();
 
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+            public override string ToString() => Item.ToString();
         }
 
         /// <summary>
@@ -191,7 +197,7 @@ namespace CsEarley
             /// <summary>
             /// The <see cref="EarleyItem"/> that created this one.
             /// </summary>
-            /// If this <c>Optional{EarleyItem}</c> is not set, then this is the first <see cref="EarleyItem"/> in the chain.
+            /// If this <see cref="Optional{T}"/> is not set, then this is the first <see cref="EarleyItem"/> in the chain.
             public readonly Optional<EarleyItem> Prev;
 
             /// <summary>
@@ -286,29 +292,38 @@ namespace CsEarley
         /// Patterns listed first are matched before other patterns.
         /// Any tokens not covered by a pattern are matched literally.
         /// </param>
+        /// <param name="noThrow">
+        /// <para>
+        /// True if the function should throw ArgumentException on invalid tokens. False if not. Default: false.
+        /// </para>
+        /// If false and any part of the string fails to match the <see cref="Grammar"/>, each character of the bad input will be processed as a token with <c>(Token: "", Raw: "[bad character]")</c> until the input is good again.
+        /// </param>
         /// <returns>
         /// <para>
         /// A list of tuples containing <c>(Token: token within the grammar, Raw: raw text it came from</c>
         /// </para>
         /// For example: a left parentheses might match as <c>(Token: "(", Raw: "(")</c>, while a number might match as <c>(Token: "number", Raw: "69")</c>.
-        /// If any part of the string fails to match the <see cref="Grammar"/>, each character of the bad input will be processed as a token with <c>(Token: "", Raw: "[bad character]")</c> until the input is good again.
         /// </returns>
         public IList<(string Token, string Raw)> Lex(string input,
-            IEnumerable<(string Token, Regex Pattern)> patterns = null)
+            IEnumerable<(string Token, Regex Pattern)> patterns = null,
+            bool noThrow = false)
         {
-            // whitespace regex. we precompile it to save a slight bit of time
-            var wsRegex = new Regex("\\s+");
-            // split the input into lines so the regex engine doesn't have to scan one huge input over and over again
-            var lines = input
-                .Split("\n")
+            // split the input on any whitespace so the regex engine doesn't have to scan one huge input over and over again
+            var words = Regex.Split(input, @"\s+", RegexOptions.Multiline)
                 .Select(x => x.Trim())
+                .Where(x => x.Length > 0)
                 .ToList();
             // if patterns is null, we want an empty list to avoid a null check below
             var regexes = patterns != null ? patterns.ToList() : new List<(string Token, Regex Pattern)>();
             // get a list of terminals the regexes can produce. only keep the ones our grammar can actually accept
-            var regexTerms = regexes.Select(x => x.Token).Where(x => Grammar.Terms.Contains(x)).ToHashSet();
+            var regexTerms = regexes
+                .Select(x => x.Token)
+                .Where(x => Grammar.Terms.Contains(x))
+                .ToHashSet();
             // we want a set of terminals that are matched literally (meaning not matched by a regex), so the raw string "number" isn't matched as an actual number
-            var rawTerms = Grammar.Terms.Where(x => !regexTerms.Contains(x)).ToHashSet();
+            var rawTerms = Grammar.Terms
+                .Where(x => !regexTerms.Contains(x))
+                .ToHashSet();
             // finally, we make a complete list of patterns that match even the raw terms, with earlier ones taking priority over later ones
             var finalPatterns = rawTerms
                 .Select(x => (Token: x, Pattern: new Regex(Regex.Escape(x))))
@@ -317,69 +332,63 @@ namespace CsEarley
             // our return list
             var ret = new List<(string Token, string Raw)>();
 
-            // the position within the current line
-            foreach (var line in lines)
+            foreach (var word in words)
             {
+                // the position within the current line
                 var currentPos = 0;
-                while (currentPos < line.Length)
+                while (currentPos < word.Length)
                 {
-                    // If the line starts with whitespace, skip the whitespace and continue.
-                    var match = wsRegex.Match(line, currentPos);
-                    if (match.Success)
-                    {
-                        currentPos += match.Length;
-                        continue;
-                    }
-
+                    // Go through each pattern and pull out the longest token.
                     var longest = (Token: "", Raw: "");
                     foreach (var (token, pattern) in finalPatterns)
                     {
-                        match = pattern.Match(line, currentPos);
-                        if (match.Success && match.Length > longest.Token.Length)
+                        var match = pattern.Match(word, currentPos);
+                        if (match.Success && match.Index == currentPos && match.Length > longest.Token.Length)
                         {
                             longest = (Token: token, Raw: match.Value);
                         }
                     }
 
+                    // If nothing matches
                     if (longest.Token.Length == 0)
                     {
-                        throw new ArgumentException($"Malformed input starting with '{line.Substring(currentPos)}'.");
+                        if (noThrow)
+                        {
+                            // add a blank token with a single (bad) character.
+                            longest = (Token: "", Raw: word[currentPos].ToString());
+                        }
+                        else
+                        {
+                            throw new ArgumentException($"Invalid token starting with {word.Substring(currentPos)}");
+                        }
                     }
+
+                    // Finally add the matched token to the list
+                    ret.Add(longest);
+                    // And move past the token we just matched
+                    currentPos += longest.Raw.Length;
                 }
-            }
-
-
-            if (rawTerms.Contains(token))
-            {
-                ret.Add((Token: token, Raw: token));
-                continue;
-            }
-
-            try
-            {
-                ret.Add((Token: regexes.First(x => x.Pattern.Match(token).Value == token).Token, Raw: token));
-            }
-            catch (InvalidOperationException _)
-            {
-                throw new ArgumentException($"Invalid token '{token}'.");
             }
 
             return ret;
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<(string Token, string Pattern)> patterns)
+        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<(string Token, string Pattern)> patterns,
+            bool noThrow = false)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))));
+            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))), noThrow);
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, Regex>> patterns)
+        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, Regex>> patterns,
+            bool noThrow = false)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)));
+            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)), noThrow);
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, string>> patterns)
+        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, string>> patterns,
+            bool noThrow = false)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
+            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))), noThrow);
         }
 
         public TreeNode Parse(IEnumerable<(string Token, string Raw)> tokens)
@@ -480,20 +489,17 @@ namespace CsEarley
                 return null;
             }
 
+            // recursive method that builds the tree based on the path the earley parse took
+            // this path is assembled from all the "prev" items starting with the final rule
             TreeNode CompleteRule(ref EarleyItem earleyItem)
             {
-                if (earleyItem == null)
-                {
-                    return null;
-                }
-
                 if (earleyItem.Item.IsReduce())
                 {
                     var children = new List<TreeNode>();
                     var oldItem = earleyItem.Item;
                     foreach (var token in earleyItem.Item.Rule.Reverse())
                     {
-                        earleyItem = earleyItem.Prev;
+                        earleyItem = earleyItem.Prev.Value;
                         children.Add(CompleteRule(ref earleyItem));
                     }
 
@@ -503,7 +509,12 @@ namespace CsEarley
 
                 if (Grammar.Nonterms.Contains(earleyItem.Item.Current))
                 {
-                    earleyItem = earleyItem.Prev;
+                    if (!earleyItem.Prev)
+                    {
+                        return null;
+                    }
+
+                    earleyItem = earleyItem.Prev.Value;
                     return CompleteRule(ref earleyItem);
                 }
 
@@ -511,7 +522,9 @@ namespace CsEarley
             }
 
             var tree = CompleteRule(ref finalRule);
-            return tree;
+            // The root node produces our actual start symbol.
+            // We want to get rid of that topmost node because the grammar technically doesn't have it.
+            return tree?.Children.First();
         }
     }
 }

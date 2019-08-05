@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -10,15 +11,16 @@ namespace CsEarley
     public class Grammar : IEnumerable<KeyValuePair<string, IList<string>>>
     {
         private readonly IDictionary<string, ISet<IList<string>>> _rules;
-        private readonly ISet<string> _terms;
-        private readonly ISet<string> _nonterms;
-        private readonly ISet<string> _symbols;
-        private readonly ISet<string> _epsilonProducers;
         private readonly IDictionary<string, ISet<string>> _firstSets;
         private readonly IDictionary<string, ISet<string>> _followSets;
         private readonly IList<KeyValuePair<string, IList<string>>> _prods;
 
-        public string Start { get; }
+        public readonly string Start;
+        public readonly ImmutableHashSet<string> Terms;
+        public readonly ImmutableHashSet<string> Nonterms;
+        public readonly ImmutableHashSet<string> Symbols;
+        public readonly ImmutableHashSet<string> EpsilonProducers;
+        
         public IEnumerable<string> Nonterms => _nonterms;
         public IEnumerable<string> Terms => _terms;
         public IEnumerable<string> Symbols => _symbols;
@@ -35,9 +37,9 @@ namespace CsEarley
         private ISet<string> ComputeEpsilonProducers()
         {
             // "#" is the epsilon token because we can't type the actual epsilon.
-            var epsilon = new OrderedSet<string>{"#"};
+            var epsilon = new OrderedSet<string> {"#"};
 
-            var ret = new OrderedSet<string>{"#"};
+            var ret = new OrderedSet<string> {"#"};
             // While the above set is changing.
             while (true)
             {
@@ -256,11 +258,12 @@ namespace CsEarley
                     {
                         _rules[nt] = new OrderedSet<IList<string>>();
                     }
-                    
+
                     // Make sure if the production contains epsilon, then epsilon is the only token
                     if (prod.Length != 1 && prod.Contains("#"))
                     {
-                        throw new ArgumentException($"A production cannot contain epsilon (#) and another symbol. Check the line '{rule}'.");
+                        throw new ArgumentException(
+                            $"A production cannot contain epsilon (#) and another symbol. Check the line '{rule}'.");
                     }
 
                     // Add this production into this nonterm's rules
@@ -273,10 +276,11 @@ namespace CsEarley
             }
 
             // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
-            _terms = new OrderedSet<string>(this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)));
+            _terms = new OrderedSet<string>(
+                this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)));
             _symbols = new OrderedSet<string>(_terms);
             _symbols.UnionWith(_nonterms);
-            
+
             _epsilonProducers = ComputeEpsilonProducers();
             _firstSets = ComputeFirstSets();
             _followSets = ComputeFollowSets();

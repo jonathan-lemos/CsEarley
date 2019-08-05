@@ -16,7 +16,7 @@ namespace CsEarley
             });
 
             var parser = new Parser(gram);
-            var tokens = parser.Lex("( 2 + 3 ) * 4", new[] {("num", "[0-9]+")});
+            var tokens = parser.Lex("  (2+ 3 ) * 4  ", new[] {("num", "[0-9]+")});
             var tree = parser.Parse(tokens);
             Console.WriteLine("foo");
         }
