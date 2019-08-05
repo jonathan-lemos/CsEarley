@@ -2,10 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Security.Principal;
 using System.Text.RegularExpressions;
 using CsEarley.Functional;
 
@@ -41,15 +39,33 @@ namespace CsEarley
             private readonly string _string;
 
             /// <summary>
+            /// Computes a hash code based on the contents of a sequence.
+            /// </summary>
+            /// This produces the same hash code for the same sequence regardless of the implementing structure.
+            /// <param name="sequence">The sequence to hash.</param>
+            /// <returns>That sequence's hash code.</returns>
+            private static int GetSequenceHashCode<T>(IEnumerable<T> sequence)
+            {
+                const int seed = 487;
+                const int modifier = 31;
+
+                unchecked
+                {
+                    return sequence.Aggregate(seed, (current, item) =>
+                        (current * modifier) + item.GetHashCode());
+                }
+            }
+
+            /// <summary>
             /// Constructs an <see cref="Item"/>.
             /// </summary>
             /// <param name="nonterm">The Nonterminal this <c>Item</c> produces.</param>
             /// <param name="rule">The Tokens this rule needs to match.</param>
             /// <param name="dotPos">The position of the dot within this rule.</param>
-            public Item(string nonterm, IEnumerable<string> rule, int dotPos = 0)
+            public Item(string nonterm, IReadOnlyList<string> rule, int dotPos = 0)
             {
                 Nonterm = nonterm;
-                Rule = ImmutableList<string>.Empty.AddRange(rule);
+                Rule = rule;
                 DotPos = dotPos;
 
                 // Insert the dot in the proper location and use it to create the string.
@@ -57,6 +73,17 @@ namespace CsEarley
                 IList<string> tmp = new List<string>(Rule);
                 tmp.Insert(dotPos, ".");
                 _string = Nonterm + " -> " + string.Join(" ", tmp);
+            }
+
+            /// <summary>
+            /// Constructs an <see cref="Item"/>.
+            /// </summary>
+            /// <param name="nonterm">The Nonterminal this <c>Item</c> produces.</param>
+            /// <param name="rule">The Tokens this rule needs to match.</param>
+            /// <param name="dotPos">The position of the dot within this rule.</param>
+            public Item(string nonterm, IEnumerable<string> rule, int dotPos = 0) : this(nonterm,
+                new List<string>(rule), dotPos)
+            {
             }
 
             /// <summary>
@@ -91,12 +118,16 @@ namespace CsEarley
             {
                 if (ReferenceEquals(null, other)) return false;
                 if (ReferenceEquals(this, other)) return true;
-                return string.Equals(Nonterm, other.Nonterm) && Equals(Rule, other.Rule) && DotPos == other.DotPos;
+                return string.Equals(Nonterm, other.Nonterm) && Rule.SequenceEqual(other.Rule) &&
+                       DotPos == other.DotPos;
             }
 
             public override bool Equals(object obj)
             {
-                return ReferenceEquals(this, obj) || obj is Item other && Equals(other);
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != this.GetType()) return false;
+                return Equals((Item) obj);
             }
 
             public override int GetHashCode()
@@ -104,7 +135,7 @@ namespace CsEarley
                 unchecked
                 {
                     var hashCode = (Nonterm != null ? Nonterm.GetHashCode() : 0);
-                    hashCode = (hashCode * 397) ^ (Rule != null ? Rule.GetHashCode() : 0);
+                    hashCode = (hashCode * 397) ^ GetSequenceHashCode(Rule);
                     hashCode = (hashCode * 397) ^ DotPos;
                     return hashCode;
                 }
@@ -142,7 +173,7 @@ namespace CsEarley
             {
                 Item = item;
                 Token = token;
-                Children = ImmutableList<TreeNode>.Empty;
+                Children = new List<TreeNode>();
             }
 
             /// <summary>
@@ -159,10 +190,10 @@ namespace CsEarley
             /// </summary>
             /// <param name="item">The <see cref="Item"/> that produced this <see cref="TreeNode"/></param>
             /// <param name="children">A list of children for this <see cref="TreeNode"/>. If this is <c>null</c> or not declared, this <see cref="TreeNode"/> will have no children.</param>
-            public TreeNode(Item item, IEnumerable<TreeNode> children = null)
+            public TreeNode(Item item, IReadOnlyList<TreeNode> children = null)
             {
                 Item = item;
-                Children = children != null ? ImmutableList<TreeNode>.Empty.AddRange(children) : ImmutableList<TreeNode>.Empty;
+                Children = children ?? new List<TreeNode>();
                 Token = item.IsReduce() ? item.Nonterm : item.Current;
             }
 

@@ -16,25 +16,20 @@ namespace CsEarley
         private readonly IList<KeyValuePair<string, IList<string>>> _prods;
 
         public readonly string Start;
-        public readonly ImmutableHashSet<string> Terms;
-        public readonly ImmutableHashSet<string> Nonterms;
-        public readonly ImmutableHashSet<string> Symbols;
-        public readonly ImmutableHashSet<string> EpsilonProducers;
+        public readonly ImmutableOrderedSet<string> Terms;
+        public readonly ImmutableOrderedSet<string> Nonterms;
+        public readonly ImmutableOrderedSet<string> Symbols;
+        public readonly ImmutableOrderedSet<string> EpsilonProducers;
         
-        public IEnumerable<string> Nonterms => _nonterms;
-        public IEnumerable<string> Terms => _terms;
-        public IEnumerable<string> Symbols => _symbols;
-
         public IReadOnlyDictionary<string, ISet<string>> FirstSets =>
             new ReadOnlyDictionary<string, ISet<string>>(_firstSets);
 
         public IReadOnlyDictionary<string, ISet<string>> FollowSets =>
             new ReadOnlyDictionary<string, ISet<string>>(_followSets);
 
-        public IEnumerable<string> EpsilonProducers => _epsilonProducers;
         public IEnumerable<KeyValuePair<string, IList<string>>> Productions => _prods;
 
-        private ISet<string> ComputeEpsilonProducers()
+        private ImmutableOrderedSet<string> ComputeEpsilonProducers()
         {
             // "#" is the epsilon token because we can't type the actual epsilon.
             var epsilon = new OrderedSet<string> {"#"};
@@ -73,10 +68,10 @@ namespace CsEarley
             var epsilon = new OrderedSet<string> {"#"};
 
             // Initialize each nonterm to be an empty first set
-            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
+            var ret = Nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
 
             // The first set of a token is always that token
-            foreach (var t in _terms)
+            foreach (var t in Terms)
             {
                 ret.Add(t, new OrderedSet<string> {t});
             }
@@ -113,7 +108,7 @@ namespace CsEarley
                         updated |= ret[nt].Count != tempLen;
 
                         // If the current token cannot produce epsilon, then break
-                        if (!_epsilonProducers.Contains(token))
+                        if (!EpsilonProducers.Contains(token))
                         {
                             allEpsilon = false;
                             break;
@@ -137,7 +132,7 @@ namespace CsEarley
             }
 
             // Get rid of all terminals in the dictionary. Then return that dictionary
-            return ret.Where(x => !_terms.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value);
+            return ret.Where(x => !Terms.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value);
         }
 
         private IDictionary<string, ISet<string>> ComputeFollowSets()
@@ -146,13 +141,13 @@ namespace CsEarley
 
             // Create first sets including terminals (which have first sets of only themselves)
             var fs = new Dictionary<string, ISet<string>>(_firstSets);
-            foreach (var term in _terms)
+            foreach (var term in Terms)
             {
                 fs.Add(term, new OrderedSet<string> {term});
             }
 
             // Start off with blank follow sets except for the start symbol, which can always be followed by "$", the end symbol.
-            var ret = _nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
+            var ret = Nonterms.ToDictionary<string, string, ISet<string>>(nt => nt, nt => new OrderedSet<string>());
             ret[Start].Add("$");
 
             while (true)
@@ -170,7 +165,7 @@ namespace CsEarley
                     foreach (var token in prod.Reverse())
                     {
                         // if the current token is a nonterm
-                        if (_nonterms.Contains(token))
+                        if (Nonterms.Contains(token))
                         {
                             // then add the running follow set to this token's follow set
 
@@ -185,7 +180,7 @@ namespace CsEarley
                         }
 
                         // if this token can produce epsilon
-                        if (_epsilonProducers.Contains(token))
+                        if (EpsilonProducers.Contains(token))
                         {
                             // then add the first set of this token to the running follow set
                             // this is because if this token produces epsilon, then the follow set of the next token needs to be included
@@ -214,7 +209,7 @@ namespace CsEarley
         {
             _rules = new Dictionary<string, ISet<IList<string>>>();
             _prods = new List<KeyValuePair<string, IList<string>>>();
-            _nonterms = new OrderedSet<string>();
+            var nonterms = new OrderedSet<string>();
 
             // For each input rule
             foreach (var rule in rules)
@@ -241,7 +236,7 @@ namespace CsEarley
                 }
 
                 // Add this nonterm to the nonterm set if it doesn't exist yet
-                _nonterms.Add(nt);
+                nonterms.Add(nt);
 
                 // First split the right-hand-side on any |
                 // "foo bar | qqq | woo woo woo" -> ["foo bar", "qqq", "woo woo woo"]
@@ -275,13 +270,13 @@ namespace CsEarley
                 }
             }
 
+            Nonterms = nonterms;
             // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
-            _terms = new OrderedSet<string>(
-                this.SelectMany(x => x.Value).ToHashSet().Where(x => !_nonterms.Contains(x)));
-            _symbols = new OrderedSet<string>(_terms);
-            _symbols.UnionWith(_nonterms);
+            Terms = new OrderedSet<string>(
+                this.SelectMany(x => x.Value).ToHashSet().Where(x => !Nonterms.Contains(x)));
+            Symbols = new OrderedSet<string>(Terms.Union(Nonterms));
 
-            _epsilonProducers = ComputeEpsilonProducers();
+            EpsilonProducers = ComputeEpsilonProducers();
             _firstSets = ComputeFirstSets();
             _followSets = ComputeFollowSets();
         }
