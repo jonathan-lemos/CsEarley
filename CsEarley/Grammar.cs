@@ -3,11 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace CsEarley
 {
+    /// <summary>
+    /// Represents a context free grammar (CFG).
+    /// </summary>
     public class Grammar : IEnumerable<KeyValuePair<string, IList<string>>>
     {
         private readonly IDictionary<string, ISet<IList<string>>> _rules;
@@ -15,18 +19,52 @@ namespace CsEarley
         private readonly IDictionary<string, ISet<string>> _followSets;
         private readonly IList<KeyValuePair<string, IList<string>>> _prods;
 
+        /// <summary>
+        /// The start symbol of the grammar.
+        /// </summary>
         public readonly string Start;
+
+        /// <summary>
+        /// The terminals (characters that appear in strings) in the grammar.
+        /// </summary>
         public readonly ImmutableOrderedSet<string> Terms;
+
+        /// <summary>
+        /// The nonterminals (characters that produce patterns) in the grammar.
+        /// </summary>
         public readonly ImmutableOrderedSet<string> Nonterms;
+
+        /// <summary>
+        /// The symbols (terminals + nonterminals) in the grammar.
+        /// </summary>
         public readonly ImmutableOrderedSet<string> Symbols;
+
+        /// <summary>
+        /// The nonterminals that can produce epsilon (empty string).
+        /// </summary>
+        /// Epsilon is represented as '#'.
         public readonly ImmutableOrderedSet<string> EpsilonProducers;
-        
+
+        /// <summary>
+        /// The terminals that can appear first in a production of each nonterminal.
+        /// </summary>
         public IReadOnlyDictionary<string, ISet<string>> FirstSets =>
             new ReadOnlyDictionary<string, ISet<string>>(_firstSets);
 
+        /// <summary>
+        /// The terminals that can follow a production of each nonterminal.
+        /// </summary>
+        /// End of input is represented as '$'.
         public IReadOnlyDictionary<string, ISet<string>> FollowSets =>
             new ReadOnlyDictionary<string, ISet<string>>(_followSets);
 
+        /// <summary>
+        /// All of the productions in this grammar.
+        /// </summary>
+        /// The productions will be listed in the order provided in the constructor.
+        /// A production is of the format 'nonterminal -> symbol1 symbol2 symbol3 ...'
+        /// The key in the KeyValuePair is the nonterminal.
+        /// The IList{string} is the list of symbols that need to be met.
         public IEnumerable<KeyValuePair<string, IList<string>>> Productions => _prods;
 
         private ImmutableOrderedSet<string> ComputeEpsilonProducers()
@@ -205,6 +243,35 @@ namespace CsEarley
             return ret;
         }
 
+        /// <summary>
+        /// Constructs a <see cref="Grammar"/>.
+        /// </summary>
+        /// <param name="rules">
+        /// A list of rules in the grammar.
+        /// </param>
+        /// These rules are of the format 'nonterminal -> aaa bbb ccc | ddd eee | fff ...'.
+        /// Epsilon is represented as '#'.
+        /// The symbols on the right-hand side can be any number of characters, but each symbol needs to be separated by one or more spaces.
+        /// A symbol cannot be '->', '#', '|', or '$'.
+        /// Alternate productions for a nonterminal can be specified with the vertical bar '|'.
+        /// Alternate productions for a nonterminal can also be specified with another string using that same nonterminal on the left.
+        /// The first production's nonterminal is treated as the start symbol.
+        /// Symbols that do not appear as nonterminals are treated as terminals.
+        /// Note that a given string must contain one and only one '->'.
+        /// <example>
+        /// An example of a basic arithmetic grammar:
+        /// <code>
+        /// new Grammar(new[] {
+        /// "start -> expression | term | factor",
+        /// "start -> #",
+        /// "expression -> expression + term | term",
+        /// "term -> term * factor | factor",
+        /// "factor -> number | ( expression )"
+        /// });
+        /// </code>
+        /// Note that the above grammar is ambiguous.
+        /// </example>
+        /// <exception cref="ArgumentException">A given input was invalid.</exception>
         public Grammar(IEnumerable<string> rules)
         {
             _rules = new Dictionary<string, ISet<IList<string>>>();
@@ -217,11 +284,11 @@ namespace CsEarley
                 // Turn "a -> bcd efg hij" into ["a", "bcd efg hij"]
                 // This should have two elements, the nonterm and the right-hand-side
                 var spl = rule.Split("->").Select(x => x.Trim()).ToList();
+                
                 if (spl.Count == 0)
                 {
                     throw new ArgumentException($"Each rule needs to have a '->'. '{rule}' does not.");
                 }
-
                 if (spl.Count > 2)
                 {
                     throw new ArgumentException($"Each rule can only have one '->'. '{rule}' does not.");
@@ -235,18 +302,27 @@ namespace CsEarley
                     Start = nt;
                 }
 
+                switch (nt)
+                {
+                    case "$":
+                    case "|":
+                        throw new ArgumentException($"'{nt}' is not a valid nonterminal. Seen in rule '{rule}'");
+                    case "":
+                        throw new ArgumentException($"Rules cannot have blank nonterminals. Seen in rule '{rule}'");
+                }
+
                 // Add this nonterm to the nonterm set if it doesn't exist yet
                 nonterms.Add(nt);
 
                 // First split the right-hand-side on any |
                 // "foo bar | qqq | woo woo woo" -> ["foo bar", "qqq", "woo woo woo"]
-                var tmp = Regex.Split(spl[1], "\\|").Select(x => x.Trim()).ToList();
+                var tmp = Regex.Split(spl[1], @"\|").Select(x => x.Trim()).ToList();
 
                 foreach (var prod in tmp)
                 {
                     // Split the right-hand-side into each token on whitespace.
                     // "bcd efg hij" -> ["bcd", "efg", "hij"]
-                    var rhs = Regex.Split(prod, "\\s+").Select(x => x.Trim()).ToList();
+                    var rhs = Regex.Split(prod, @"\s+").Select(x => x.Trim()).ToList();
 
                     // Initialize a blank set for this nonterm if it's not currently in our rules dict
                     if (!_rules.ContainsKey(nt))
@@ -258,7 +334,12 @@ namespace CsEarley
                     if (prod.Length != 1 && prod.Contains("#"))
                     {
                         throw new ArgumentException(
-                            $"A production cannot contain epsilon (#) and another symbol. Check the line '{rule}'.");
+                            $"A production cannot contain epsilon (#) and another symbol. Seen in rule '{rule}'.");
+                    }
+
+                    if (prod.Contains("$"))
+                    {
+                        throw new ArgumentException($"'$' cannot be used as a symbol. Seen in rule '{rule}'.");
                     }
 
                     // Add this production into this nonterm's rules
@@ -285,7 +366,7 @@ namespace CsEarley
 
         public IEnumerator<KeyValuePair<string, IList<string>>> GetEnumerator()
         {
-            return _prods.GetEnumerator();
+            return Productions.GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()

@@ -11,16 +11,12 @@ namespace CsEarley.Functional
 
         public Try(T value)
         {
-            _val = value;
-            IsSuccess = true;
-            IsFailure = false;
+            (_val, IsSuccess, IsFailure) = (value, true, false);
         }
 
         public Try(TException ex)
         {
-            _ex = ex;
-            IsSuccess = false;
-            IsFailure = true;
+            (_ex, IsSuccess, IsFailure) = (ex, false, true);
         }
 
         public T Value => 

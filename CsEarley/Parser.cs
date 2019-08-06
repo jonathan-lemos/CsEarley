@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -9,10 +8,13 @@ using CsEarley.Functional;
 
 namespace CsEarley
 {
+    /// <summary>
+    /// Parses tokens according to a <see cref="Grammar"/>.
+    /// </summary>
     public class Parser
     {
         /// <summary>
-        /// Class that represents an LR(0) Item.
+        /// Represents an LR(0) Item.
         /// </summary>
         /// These follow the format '<c>Nonterm -> Symbol1 . Symbol2 Symbol3</c>'.
         /// Everything to the left of the dot has been read; everything to the right needs to be read. 
@@ -64,9 +66,7 @@ namespace CsEarley
             /// <param name="dotPos">The position of the dot within this rule.</param>
             public Item(string nonterm, IReadOnlyList<string> rule, int dotPos = 0)
             {
-                Nonterm = nonterm;
-                Rule = rule;
-                DotPos = dotPos;
+                (Nonterm, Rule, DotPos) = (nonterm, rule, dotPos);
 
                 // Insert the dot in the proper location and use it to create the string.
                 // We precalculate this string so ToString() is not O(n).
@@ -156,7 +156,6 @@ namespace CsEarley
             /// If this <see cref="TreeNode"/> was produced from a terminal, this contains the <i>raw</i> token that produced it (not the terminal itself).
             /// Otherwise it contains the nonterminal this <see cref="TreeNode"/> corresponds to.
             /// </summary>
-            /// Note that if this is set, this <see cref="TreeNode"/> is a leaf node (no children).
             public readonly string Token;
 
             /// <summary>
@@ -240,10 +239,7 @@ namespace CsEarley
             /// <param name="prev"></param>
             public EarleyItem(Item item, int origin, int index, EarleyItem prev)
             {
-                Item = item;
-                Origin = origin;
-                Index = index;
-                Prev = prev;
+                (Item, Origin, Index, Prev) = (item, origin, index, prev ?? new Optional<EarleyItem>());
             }
 
             /// <summary>
@@ -253,8 +249,7 @@ namespace CsEarley
             /// <param name="origin"><see cref="EarleyItem.Origin"/></param>
             public void Deconstruct(out Item item, out int origin)
             {
-                item = Item;
-                origin = Origin;
+                (item, origin) = (Item, Origin);
             }
 
             protected bool Equals(EarleyItem other)
@@ -298,6 +293,16 @@ namespace CsEarley
             Grammar = g;
         }
 
+        public class LexException : Exception
+        {
+            public readonly IReadOnlyList<(string Token, string Raw)> Tokens;
+
+            public LexException(string msg, IEnumerable<(string Token, string Raw)> tokens) : base(msg)
+            {
+                Tokens = new List<(string Token, string Raw)>(tokens);
+            }
+        }
+
         /// <summary>
         /// Lexes a raw input string, returning a list of tokens.
         /// </summary>
@@ -335,9 +340,8 @@ namespace CsEarley
         /// </para>
         /// For example: a left parentheses might match as <c>(Token: "(", Raw: "(")</c>, while a number might match as <c>(Token: "number", Raw: "69")</c>.
         /// </returns>
-        public IList<(string Token, string Raw)> Lex(string input,
-            IEnumerable<(string Token, Regex Pattern)> patterns = null,
-            bool noThrow = false)
+        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+            IEnumerable<(string Token, Regex Pattern)> patterns = null)
         {
             // split the input on any whitespace so the regex engine doesn't have to scan one huge input over and over again
             var words = Regex.Split(input, @"\s+", RegexOptions.Multiline)
@@ -363,7 +367,9 @@ namespace CsEarley
             // our return list
             var ret = new List<(string Token, string Raw)>();
 
-            foreach (var word in words)
+            var badIndex = new Optional<(int Index, string Word)>();
+
+            foreach (var (word, index) in words.Select((x, i) => (x, i)))
             {
                 // the position within the current line
                 var currentPos = 0;
@@ -383,15 +389,14 @@ namespace CsEarley
                     // If nothing matches
                     if (longest.Token.Length == 0)
                     {
-                        if (noThrow)
+                        // Set the bad index to the first bad token
+                        if (!badIndex)
                         {
-                            // add a blank token with a single (bad) character.
-                            longest = (Token: "", Raw: word[currentPos].ToString());
+                            badIndex = (Index: index, Word: word);
                         }
-                        else
-                        {
-                            throw new ArgumentException($"Invalid token starting with {word.Substring(currentPos)}");
-                        }
+
+                        // add a blank token with a single (bad) character.
+                        longest = (Token: "", Raw: word[currentPos].ToString());
                     }
 
                     // Finally add the matched token to the list
@@ -401,28 +406,37 @@ namespace CsEarley
                 }
             }
 
-            return ret;
+            return badIndex.Match<Try<IList<(string Token, string Raw)>, LexException>>(
+                x => new LexException($"Bad token starting with '{x.Word}' (index {x.Index}).", ret),
+                () => ret
+            );
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<(string Token, string Pattern)> patterns,
-            bool noThrow = false)
+        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+            IEnumerable<(string Token, string Pattern)> patterns)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))), noThrow);
+            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))));
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, Regex>> patterns,
-            bool noThrow = false)
+        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+            IEnumerable<KeyValuePair<string, Regex>> patterns)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)), noThrow);
+            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)));
         }
 
-        public IList<(string Token, string Raw)> Lex(string input, IEnumerable<KeyValuePair<string, string>> patterns,
-            bool noThrow = false)
+        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+            IEnumerable<KeyValuePair<string, string>> patterns)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))), noThrow);
+            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
         }
 
-        public TreeNode Parse(IEnumerable<(string Token, string Raw)> tokens)
+        /// <summary>
+        /// Builds a parse tree out of a series of tokens and the <see cref="Grammar"/> given in the constructor.
+        /// </summary>
+        /// These tokens can be built out of an input string with <see cref="Parser.Lex"/>.
+        /// <param name="tokens">The tokens to parse.</param>
+        /// <returns>A Try{TreeNode, ArgumentException} containing either the parse tree, or an exception showing why parsing failed.</returns>
+        public Try<TreeNode, ArgumentException> Parse(IEnumerable<(string Token, string Raw)> tokens)
         {
             // This is where the juice goes down, boys
             // The Earley parser is a DYNAMIC PROGRAMMING top-down parser that completes bottom-up
@@ -522,39 +536,49 @@ namespace CsEarley
 
             // recursive method that builds the tree based on the path the earley parse took
             // this path is assembled from all the "prev" items starting with the final rule
+            // the complete path makes up the "rightmost derivation" of the tokens
+            // the ref parameter makes sure the current item updates for all recursive calls of the function
             TreeNode CompleteRule(ref EarleyItem earleyItem)
             {
                 if (earleyItem.Item.IsReduce())
                 {
                     var children = new List<TreeNode>();
                     var oldItem = earleyItem.Item;
+                    // for a reduce item, we add a child for each token in that item by recursively calling completeRule
+                    // we go backwards since our derivation path goes from the final state back to the start state
                     foreach (var token in earleyItem.Item.Rule.Reverse())
                     {
                         earleyItem = earleyItem.Prev.Value;
                         children.Add(CompleteRule(ref earleyItem));
                     }
 
+                    // since we matched the tokens backwards, we reverse the children back to the right order
                     children.Reverse();
+                    // get rid of any null children
                     return new TreeNode(oldItem, children.Where(x => x != null).ToList());
                 }
 
+                // if this non-reduce item needs to complete a nonterm
                 if (Grammar.Nonterms.Contains(earleyItem.Item.Current))
                 {
+                    // for a non-reduce item, if this is the last item we just return null since it's not important
                     if (!earleyItem.Prev)
                     {
                         return null;
                     }
 
+                    // otherwise, go to the next step in the derivation and recursively completeRule
                     earleyItem = earleyItem.Prev.Value;
                     return CompleteRule(ref earleyItem);
                 }
 
+                // if this non-reduce item needs to complete a term, then make a new node containing the raw string that token corresponds to
                 return new TreeNode(earleyItem.Item, words[earleyItem.Index].Raw);
             }
 
             var tree = CompleteRule(ref finalRule);
             // The root node produces our actual start symbol.
-            // We want to get rid of that topmost node because the grammar technically doesn't have it.
+            // We want to get rid of that topmost node because all it does is produce the actual start of our tree.
             return tree?.Children.First();
         }
     }
