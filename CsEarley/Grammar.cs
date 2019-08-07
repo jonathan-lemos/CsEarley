@@ -285,7 +285,7 @@ namespace CsEarley
                 // This should have two elements, the nonterm and the right-hand-side
                 var spl = rule.Split("->").Select(x => x.Trim()).ToList();
                 
-                if (spl.Count == 0)
+                if (spl.Count < 2)
                 {
                     throw new ArgumentException($"Each rule needs to have a '->'. '{rule}' does not.");
                 }
@@ -306,9 +306,9 @@ namespace CsEarley
                 {
                     case "$":
                     case "|":
-                        throw new ArgumentException($"'{nt}' is not a valid nonterminal. Seen in rule '{rule}'");
+                        throw new ArgumentException($"'{nt}' is not a valid nonterminal. Seen in rule '{rule}'.");
                     case "":
-                        throw new ArgumentException($"Rules cannot have blank nonterminals. Seen in rule '{rule}'");
+                        throw new ArgumentException($"Rules cannot have blank nonterminals. Seen in rule '{rule}'.");
                 }
 
                 // Add this nonterm to the nonterm set if it doesn't exist yet
@@ -330,14 +330,19 @@ namespace CsEarley
                         _rules[nt] = new OrderedSet<IList<string>>();
                     }
 
+                    if (rhs.Count == 1 && rhs[0] == "")
+                    {
+                        throw new ArgumentException($"A production cannot be empty. Seen in rule '{rule}'.");
+                    }
+
                     // Make sure if the production contains epsilon, then epsilon is the only token
-                    if (prod.Length != 1 && prod.Contains("#"))
+                    if (rhs.Count != 1 && rhs.Contains("#"))
                     {
                         throw new ArgumentException(
                             $"A production cannot contain epsilon (#) and another symbol. Seen in rule '{rule}'.");
                     }
 
-                    if (prod.Contains("$"))
+                    if (rhs.Contains("$"))
                     {
                         throw new ArgumentException($"'$' cannot be used as a symbol. Seen in rule '{rule}'.");
                     }
@@ -349,6 +354,11 @@ namespace CsEarley
                     // This is only used for enumerator purposes because it preserves the original input order.
                     _prods.Add(new KeyValuePair<string, IList<string>>(nt, rhs));
                 }
+            }
+
+            if (Nonterms.Count == 0)
+            {
+                throw new ArgumentException("A Grammar needs to have at least one production.");
             }
 
             Nonterms = nonterms;

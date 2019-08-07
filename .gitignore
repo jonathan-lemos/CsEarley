@@ -1,3 +1,6 @@
 .idea/*
 CsEarley/obj/*
 CsEarley/bin/*
+CsEarleyTests/obj/*
+CsEarleyTests/bin/*
+CsEarley.sln.DotSettings.user

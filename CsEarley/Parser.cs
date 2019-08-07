@@ -328,15 +328,11 @@ namespace CsEarley
         /// Patterns listed first are matched before other patterns.
         /// Any tokens not covered by a pattern are matched literally.
         /// </param>
-        /// <param name="noThrow">
-        /// <para>
-        /// True if the function should throw ArgumentException on invalid tokens. False if not. Default: false.
-        /// </para>
-        /// If false and any part of the string fails to match the <see cref="Grammar"/>, each character of the bad input will be processed as a token with <c>(Token: "", Raw: "[bad character]")</c> until the input is good again.
-        /// </param>
         /// <returns>
         /// <para>
-        /// A list of tuples containing <c>(Token: token within the grammar, Raw: raw text it came from</c>
+        /// Success: A list of tuples containing <c>(Token: token within the grammar, Raw: raw text it came from</c>
+        /// Failure: A <see cref="LexException"/> containing an error message and the list of tuples matched.
+        /// Bad tuples will have a blank string for the Token field.
         /// </para>
         /// For example: a left parentheses might match as <c>(Token: "(", Raw: "(")</c>, while a number might match as <c>(Token: "number", Raw: "69")</c>.
         /// </returns>
