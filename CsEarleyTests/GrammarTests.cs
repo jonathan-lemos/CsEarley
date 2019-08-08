@@ -53,15 +53,61 @@ namespace CsEarleyTests
         [TestCase(
             "S"
         )]
+        [Test, Category("Input")]
         public void InputFailureTest(params string[] input)
         {
             // ReSharper disable once ObjectCreationAsStatement
             Assert.Throws<ArgumentException>(() => new Grammar(input));
         }
 
-        public void FirstSetTest(IDictionary<string, ISet<string>> firstSets, params string[] grammar)
+        private static object[] _firstSetTestCases =
         {
-            Assert.AreEqual(firstSets, new Grammar(grammar).FirstSets);
+            new object[]
+            {
+                new Dictionary<string, ISet<string>>
+                {
+                    {"S", new HashSet<string> {"a", "b", "c"}},
+                    {"A", new HashSet<string> {"a", "#"}},
+                    {"B", new HashSet<string> {"a", "b", "#"}},
+                    {"C", new HashSet<string> {"c", "a", "b"}}
+                },
+                new[]
+                {
+                    "S -> A B C",
+                    "A -> # | a",
+                    "B -> A A | b",
+                    "C -> c B | S"
+                }
+            },
+            new object[]
+            {
+                new Dictionary<string, ISet<string>>
+                {
+                    {"S", new HashSet<string> {"b", "c", "#"}},
+                    {"A", new HashSet<string> {"#", "b", "c"}},
+                    {"B", new HashSet<string> {"b", "#", "c"}},
+                    {"C", new HashSet<string> {"c", "b", "#"}}
+                },
+                new[]
+                {
+                    "S -> A B C",
+                    "A -> S | #",
+                    "B -> b | A",
+                    "C -> c | B"
+                }
+            }
+        };
+
+        [TestCaseSource(nameof(_firstSetTestCases))]
+        [Test, Category("First Follows")]
+        public void FirstSetTest(IDictionary<string, ISet<string>> firstSets, string[] grammar)
+        {
+            var fs = new Grammar(grammar).FirstSets;
+            CollectionAssert.AreEquivalent(firstSets.Keys, fs.Keys);
+            foreach (var key in firstSets.Keys)
+            {
+                CollectionAssert.AreEquivalent(fs[key], firstSets[key]);
+            }
         }
     }
 }

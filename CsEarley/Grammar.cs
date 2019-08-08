@@ -356,7 +356,7 @@ namespace CsEarley
                 }
             }
 
-            if (Nonterms.Count == 0)
+            if (nonterms.Count == 0)
             {
                 throw new ArgumentException("A Grammar needs to have at least one production.");
             }
