@@ -170,7 +170,7 @@ namespace CsEarley
             }
 
             // Get rid of all terminals in the dictionary. Then return that dictionary
-            return ret.Where(x => !Terms.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value);
+            return ret.Where(x => Nonterms.Contains(x.Key)).ToDictionary(x => x.Key, x => x.Value);
         }
 
         private IDictionary<string, ISet<string>> ComputeFollowSets()
@@ -178,7 +178,7 @@ namespace CsEarley
             var epsilon = new OrderedSet<string> {"#"};
 
             // Create first sets including terminals (which have first sets of only themselves)
-            var fs = new Dictionary<string, ISet<string>>(_firstSets);
+            var fs = FirstSets.ToDictionary(x => x.Key, x => new OrderedSet<string>(x.Value));
             foreach (var term in Terms)
             {
                 fs.Add(term, new OrderedSet<string> {term});
@@ -197,7 +197,7 @@ namespace CsEarley
                 {
                     // currentFollow is what can follow the current symbol
                     // By default this is the follow set of the current nonterminal
-                    var currentFollow = ret[nt];
+                    var currentFollow = new OrderedSet<string>(ret[nt]);
 
                     // start from the back of this production and go toward the front
                     foreach (var token in prod.Reverse())
@@ -227,7 +227,7 @@ namespace CsEarley
                         else
                         {
                             // otherwise, simply set the running follow set to the first set of this token
-                            currentFollow = fs[token];
+                            currentFollow = new OrderedSet<string>(fs[token]);
                         }
                     }
                 }
