@@ -3,6 +3,11 @@ using System.Linq;
 
 namespace CsEarley
 {
+    /// <summary>
+    /// A hashset that preserves insertion order.
+    /// </summary>
+    /// It features amortized O(1) insertions, deletions, and lookups but uses twice the memory as a normal hashset.
+    /// <typeparam name="T">The type of the items within this collection.</typeparam>
     public class OrderedSet<T> : ISet<T>
     {
         private readonly Dictionary<T, LinkedListNode<T>> _dict;
@@ -25,18 +30,24 @@ namespace CsEarley
                 Add(elem);
             }
         }
-        
+
         void ICollection<T>.Add(T item)
         {
             Add(item);
         }
-        
+
+        /// <summary>
+        /// Adds an item to the <see cref="OrderedSet"/>.
+        /// </summary>
+        /// This operation is amortized O(1), worst-case O(n).
+        /// <param name="item">The item to add.</param>
         public bool Add(T item)
         {
             if (Contains(item))
             {
                 return false;
             }
+
             _list.AddLast(item);
             _dict.Add(item, _list.Last);
             return true;
@@ -48,6 +59,11 @@ namespace CsEarley
             _list.Clear();
         }
 
+        /// <summary>
+        /// Checks if an item is present within the set.
+        /// </summary>
+        /// <param name="item"></param>
+        /// <returns></returns>
         public bool Contains(T item)
         {
             return _dict.ContainsKey(item);
@@ -70,9 +86,9 @@ namespace CsEarley
                 }
             }
         }
-        
+
         public T First => _list.First.Value;
-        
+
         public IEnumerator<T> GetEnumerator()
         {
             return _list.GetEnumerator();
@@ -115,13 +131,12 @@ namespace CsEarley
             var set = new HashSet<T>(enumerable);
             return this.All(x => set.Contains(x));
         }
-        
+
         public bool IsSupersetOf(IEnumerable<T> enumerable)
         {
-            
             return enumerable.All(Contains);
         }
-        
+
         public T Last => _list.Last.Value;
 
         public IEnumerable<T> MutableIterator()
@@ -136,13 +151,14 @@ namespace CsEarley
         {
             return enumerable.Any(Contains);
         }
-        
+
         public bool Remove(T item)
         {
             if (!Contains(item))
             {
                 return false;
             }
+
             _list.Remove(_dict[item]);
             _dict.Remove(item);
             return true;

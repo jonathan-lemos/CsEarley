@@ -7,54 +7,110 @@ namespace CsEarleyTests
 {
     public class GrammarTests
     {
-        [TestCase(
-            "S -> a")
-        ]
-        [TestCase(
-            " S -> a ")
-        ]
-        [TestCase(
-            "S->a")
-        ]
-        [TestCase(
-            "S -> E",
-            "S -> #",
-            "E -> E + T | T",
-            "T -> T x F | F",
-            "F -> num | id",
-            "F -> ( E )"
-        )]
+        private static object[] _inputSuccessTestCases =
+        {
+            new object[]
+            {
+                new[]
+                {
+                    "S -> a"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    " S -> a "
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S->a"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S -> E",
+                    "S -> #",
+                    "E -> E + T | T",
+                    "T -> T x F | F",
+                    "F -> num | id",
+                    "F -> ( E )"
+                }
+            }
+        };
+
+        [TestCaseSource(nameof(_inputSuccessTestCases))]
         [Test, Category("Input")]
-        public void InputSuccessTest(params string[] input)
+        public void InputSuccessTest(string[] input)
         {
             // ReSharper disable once ObjectCreationAsStatement
             Assert.DoesNotThrow(() => new Grammar(input));
         }
 
-        [TestCase(new object[0])]
-        [TestCase(
-            "S -> $"
-        )]
-        [TestCase(
-            "S -> a |"
-        )]
-        [TestCase(
-            "S -> # a"
-        )]
-        [TestCase(
-            "S ->->"
-        )]
-        [TestCase(
-            "S ->"
-        )]
-        [TestCase(
-            " -> a"
-        )]
-        [TestCase(
-            "S"
-        )]
+        private static object[] _inputFailureTestCases =
+        {
+            new object[]
+            {
+                new string[] { }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S -> $"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S -> a |"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S -> # a"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S ->->"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S ->"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    " -> a"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    "S"
+                }
+            }
+        };
+        [TestCaseSource(nameof(_inputFailureTestCases))]
         [Test, Category("Input")]
-        public void InputFailureTest(params string[] input)
+        public void InputFailureTest(string[] input)
         {
             // ReSharper disable once ObjectCreationAsStatement
             Assert.Throws<ArgumentException>(() => new Grammar(input));
