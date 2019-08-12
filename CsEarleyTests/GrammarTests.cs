@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CsEarley;
 using NUnit.Framework;
 
@@ -108,12 +109,16 @@ namespace CsEarleyTests
                 }
             }
         };
+
         [TestCaseSource(nameof(_inputFailureTestCases))]
         [Test, Category("Input")]
         public void InputFailureTest(string[] input)
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentException>(() => new Grammar(input));
+            Assert.Throws<ArgumentException>(() =>
+            {
+                var x = new Grammar(input);
+            });
         }
 
         private static object[] _firstSetTestCases =
@@ -274,6 +279,92 @@ namespace CsEarleyTests
             {
                 CollectionAssert.AreEquivalent(fs[key], followSets[key]);
             }
+        }
+
+        private static object[] _enumerationTestCases =
+        {
+            new object[]
+            {
+                new[]
+                {
+                    ("S", new List<string> {"A", "B", "C"}),
+                    ("S", new List<string> {"s"}),
+                    ("A", new List<string> {"#"}),
+                    ("A", new List<string> {"a"}),
+                    ("B", new List<string> {"A", "A"}),
+                    ("B", new List<string> {"b"}),
+                    ("C", new List<string> {"C", "B"}),
+                    ("C", new List<string> {"c", "S", "d"})
+                },
+                new[]
+                {
+                    "S -> A B C | s",
+                    "A -> # | a",
+                    "B -> A A | b",
+                    "C -> C B | c S d"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    ("S", new List<string> {"A", "B", "C"}),
+                    ("A", new List<string> {"S"}),
+                    ("A", new List<string> {"#"}),
+                    ("B", new List<string> {"b"}),
+                    ("B", new List<string> {"A"}),
+                    ("C", new List<string> {"c"}),
+                    ("C", new List<string> {"B"})
+                },
+                new[]
+                {
+                    "S -> A B C",
+                    "A -> S | #",
+                    "B -> b | A",
+                    "C -> c | B"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    ("S", new List<string> {"A", "B"}),
+                    ("S", new List<string> {"s"}),
+                    ("A", new List<string> {"B", "A"}),
+                    ("A", new List<string> {"a"}),
+                    ("B", new List<string> {"b", "S", "A"}),
+                    ("B", new List<string> {"#"}),
+                },
+                new[]
+                {
+                    "S -> A B | s",
+                    "A -> B A | a",
+                    "B -> b S A | #"
+                }
+            },
+            new object[]
+            {
+                new[]
+                {
+                    ("S", new List<string> {"A", "B"}),
+                    ("A", new List<string> {"a", "A"}),
+                    ("A", new List<string> {"a"}),
+                    ("B", new List<string> {"b", "B"}),
+                    ("B", new List<string> {"#"}),
+                },
+                new[]
+                {
+                    "S -> A B",
+                    "A -> a A | a",
+                    "B -> b B | #"
+                }
+            }
+        };
+        [TestCaseSource(nameof(_enumerationTestCases))]
+        [Test, Category("Enumeration")]
+        public void EnumerationTest((string, List<string>)[] productions, string[] grammar)
+        {
+            CollectionAssert.AreEqual(productions.Select(x => new KeyValuePair<string, IList<string>>(x.Item1, x.Item2)), new Grammar(grammar));
         }
     }
 }

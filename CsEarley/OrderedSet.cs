@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -101,9 +102,10 @@ namespace CsEarley
 
         public void IntersectWith(IEnumerable<T> enumerable)
         {
-            var list = new List<T>(enumerable);
+            var list = new HashSet<T>(enumerable);
             ExceptWith(list);
-            foreach (var item in this)
+            // New collection allows iteration to continue despite removing elements.
+            foreach (var item in new List<T>(this))
             {
                 if (!list.Contains(item))
                 {
@@ -193,6 +195,11 @@ namespace CsEarley
                     Add(item);
                 }
             }
+        }
+
+        public override string ToString()
+        {
+            return "{" + string.Join(", ", this) + "}";
         }
     }
 }
