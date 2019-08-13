@@ -24,6 +24,24 @@ namespace CsEarley.Functional
         public TException Exception =>
             IsFailure ? _ex : throw new InvalidOperationException("This Try does not contain an exception.");
 
+        
+        public T ValueOr(T val) => IsSuccess ? Value : val;
+        public T ValueOr(Func<T> func) => IsSuccess ? Value : func();
+
+        // C# is shit and does not allow void in {T}
+        // as such we had to make this
+        // for some reason void returns cannot be used in ternaries either
+        public void Match(Action<T> onSuccess, Action<TException> onFailure)
+        {
+            if (IsSuccess)
+            {
+                onSuccess(Value);
+            }
+            else
+            {
+                onFailure(Exception);
+            }
+        }
         public TRes Match<TRes>(Func<T, TRes> onSuccess, Func<TException, TRes> onFailure) =>
             IsSuccess ? onSuccess(Value) : onFailure(Exception);
         

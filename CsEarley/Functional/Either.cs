@@ -34,9 +34,24 @@ namespace CsEarley.Functional
             IsRight = true;
         }
 
+        public TLeft LeftOr(TLeft val) => IsLeft ? Left : val;
+        public TLeft LeftOr(Func<TLeft> func) => IsLeft ? Left : func();
+        public TRight RightOr(TRight val) => IsRight ? Right : val;
+        public TRight RightOr(Func<TRight> func) => IsRight ? Right : func();
+
+        public void Match(Action<TLeft> ifLeft, Action<TRight> ifRight)
+        {
+            if (IsLeft)
+            {
+                ifLeft(Left);
+            }
+            else
+            {
+                ifRight(Right);
+            }
+        }
+
         public T Match<T>(Func<TLeft, T> ifLeft, Func<TRight, T> ifRight) => IsLeft ? ifLeft(Left) : ifRight(Right);
-        public TLeft LeftOrDefault(TLeft def = default(TLeft)) => IsLeft ? Left : def;
-        public TRight RightOrDefault(TRight def = default(TRight)) => IsRight ? Right : def;
 
         public static implicit operator Either<TLeft, TRight>(TLeft left) => new Either<TLeft, TRight>(left);
         public static implicit operator Either<TLeft, TRight>(TRight right) => new Either<TLeft, TRight>(right);

@@ -103,7 +103,13 @@ namespace CsEarley
         public void IntersectWith(IEnumerable<T> enumerable)
         {
             var list = new HashSet<T>(enumerable);
-            ExceptWith(list);
+            foreach (var item in list)
+            {
+                if (!Contains(item))
+                {
+                    Remove(item);
+                }
+            }
             // New collection allows iteration to continue despite removing elements.
             foreach (var item in new List<T>(this))
             {

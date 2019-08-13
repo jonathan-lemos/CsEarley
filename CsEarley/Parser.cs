@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Principal;
 using System.Text.RegularExpressions;
 using CsEarley.Functional;
 
@@ -576,6 +577,33 @@ namespace CsEarley
             // The root node produces our actual start symbol.
             // We want to get rid of that topmost node because all it does is produce the actual start of our tree.
             return tree?.Children.First();
+        }
+
+        public Try<TreeNode, ArgumentException> Parse(string input,
+            IEnumerable<(string Token, Regex Pattern)> patterns)
+        {
+            return Lex(input, patterns).Match(
+                Parse,
+                ex => new ArgumentException("Failed to lex the input string.", ex)
+            );
+        }
+
+        public Try<TreeNode, ArgumentException> Parse(string input,
+            IEnumerable<(string Token, string Pattern)> patterns)
+        {
+            return Parse(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))));
+        }
+
+        public Try<TreeNode, ArgumentException> Parse(string input,
+            IEnumerable<KeyValuePair<string, Regex>> patterns)
+        {
+            return Parse(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)));
+        }
+
+        public Try<TreeNode, ArgumentException> Parse(string input,
+            IEnumerable<KeyValuePair<string, string>> patterns)
+        {
+            return Parse(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
         }
     }
 }
