@@ -45,8 +45,8 @@ namespace CsEarleyTests
                 new[]
                 {
                     ("type", @"int|void"),
-                    ("num", @"\d+"),
-                    ("id", @"[a-z]+")
+                    ("num", @"\b\d+\b"),
+                    ("id", @"\b[a-z]+\b")
                 },
                 new[]
                 {
@@ -89,6 +89,7 @@ int main () {
                             (")", ")"),
                             ("{", "{"),
                             ("if", "if"),
+                            ("(", "("),
                             ("num", "2"),
                             ("+", "+"),
                             ("num", "3"),
@@ -130,6 +131,7 @@ int main () {
                             ("+", "+"),
                             ("num", "11"),
                             (")", ")"),
+                            ("+", "+"),
                             ("num", "12"),
                             (")", ")"),
                             ("+", "+"),
@@ -163,6 +165,7 @@ int main () {
                             ("num", "22"),
                             ("*", "*"),
                             ("num", "23"),
+                            (")", ")"),
                             ("+", "+"),
                             ("(", "("),
                             ("num", "24"),
@@ -187,8 +190,8 @@ int main () {
                 }),
                 new[]
                 {
-                    ("num", @"\d+"),
-                    ("id", @"[a-z]+")
+                    ("num", @"\b\d+\b"),
+                    ("id", @"\b[a-z]+\b")
                 },
                 new[]
                 {
@@ -198,9 +201,25 @@ int main () {
                     ("44 44", new[] {("num", "44"), ("num", "44")}),
                     ("44 3 foo", new[] {("num", "44"), ("num", "3"), ("id", "foo")}),
                     ("44 abc", new[] {("num", "44"), ("abc", "abc")}),
-                    ("44 ab", new[] {("num", "44"), ("ab", "ab")}),
-                    ("44 abcd", new[] {("num", "44"), ("abcd", "abcd")}),
+                    ("44 ab", new[] {("num", "44"), ("id", "ab")}),
+                    ("44 abcd", new[] {("num", "44"), ("id", "abcd")}),
                     ("", new (string, string)[] { })
+                }
+            ),
+            new TestContext(
+                new Grammar(new[]
+                {
+                    "S -> A S | #",
+                    "A -> a B",
+                    "B -> b C b",
+                    "C -> c C | #"
+                }),
+                new (string, string)[] {},
+                new[]
+                {
+                    ("abccbabb", new[] {("a", "a"), ("b", "b"), ("c", "c"), ("c", "c"), ("b", "b"), ("a", "a"), ("b", "b"), ("b", "b")}),
+                    ("abb", new[] {("a", "a"), ("b", "b"), ("b", "b")}),
+                    ("", new (string, string)[] {})
                 }
             )
         };
@@ -216,8 +235,8 @@ int main () {
                 }),
                 new[]
                 {
-                    ("num", @"\d+"),
-                    ("id", @"[a-z]+")
+                    ("num", @"\b\d+\b"),
+                    ("id", @"\b[a-z]+\b")
                 },
                 new (string, (string, string)[])[]
                 {
@@ -245,7 +264,7 @@ int main () {
         public void LexPassTest(Grammar g, IEnumerable<(string, string)> patterns,
             string input, IEnumerable<(string Token, string Raw)> expectedTokens)
         {
-            new Parser(g).Lex(input).Match(
+            new Parser(g).Lex(input, patterns).Match(
                 tokens => Assert.AreEqual(expectedTokens, tokens),
                 ex => throw ex
             );
@@ -253,9 +272,10 @@ int main () {
 
         [TestCaseSource(nameof(_lexFailTestCases))]
         [Test, Category("Lexer")]
-        public void LexFailTest(Grammar g, IEnumerable<(string, string)> patterns, string input)
+        public void LexFailTest(Grammar g, IEnumerable<(string, string)> patterns, string input,
+            IEnumerable<(string Token, string Raw)> expectedTokens)
         {
-            new Parser(g).Lex(input).Match(
+            new Parser(g).Lex(input, patterns).Match(
                 tokens => Assert.Fail("Expected failure but lexed successfully."),
                 ex => Assert.Pass()
             );
@@ -265,7 +285,14 @@ int main () {
         {
             if (root.Children.Count == 0)
             {
-                return new List<(string Token, string Raw)> {(Token: root.Item.Current, Raw: root.Token)};
+                if (root.Item.Current == "#")
+                {
+                    return new List<(string Token, string Raw)>();
+                }
+                else
+                {
+                    return new List<(string Token, string Raw)> {(Token: root.Item.Current, Raw: root.Token)};
+                }
             }
             else
             {
@@ -281,7 +308,7 @@ int main () {
             IEnumerable<(string Token, string Raw)> expectedTokens)
         {
             new Parser(g).Parse(input, patterns).Match(
-                tree => Assert.Equals(expectedTokens, GetTokenSequence(tree)),
+                tree => Assert.AreEqual(expectedTokens, GetTokenSequence(tree)),
                 ex => throw ex
             );
         }

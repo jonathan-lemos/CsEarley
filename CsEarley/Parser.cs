@@ -449,7 +449,7 @@ namespace CsEarley
             // Create a new start state so it's easier to build the parser
             var newStart = Grammar.Start + "'";
 
-            // Create a table with an empty set for each word, plus one for the initial state.
+            // Create a table with an empty set for each word, plus one for the final reduce state.
             var table = new List<OrderedSet<EarleyItem>>();
             for (var i = 0; i < words.Count + 1; ++i)
             {
@@ -526,6 +526,13 @@ namespace CsEarley
 
             // The last state should have a completed state for our start rule. If it doesn't, then this grammar can't accept the input tokens
             var finalRule = table.Last().FirstOrDefault(x => x.Item.Equals(endRule));
+            
+            var parsePath = new List<string>{finalRule.Item.ToString()};
+            for (var x = finalRule.Prev; x.IsSet; x = x.Value.Prev)
+            {
+                parsePath.Add(x.Value.Item + "\n");
+            }
+            
             if (finalRule == null)
             {
                 return null;
@@ -567,6 +574,12 @@ namespace CsEarley
                     // otherwise, go to the next step in the derivation and recursively completeRule
                     earleyItem = earleyItem.Prev.Value;
                     return CompleteRule(ref earleyItem);
+                }
+
+                // if the current token is epsilon
+                if (earleyItem.Item.Current == "#")
+                {
+                    return new TreeNode(earleyItem.Item);
                 }
 
                 // if this non-reduce item needs to complete a term, then make a new node containing the raw string that token corresponds to

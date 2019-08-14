@@ -178,7 +178,8 @@ namespace CsEarley
             var epsilon = new OrderedSet<string> {"#"};
 
             // Create first sets including terminals (which have first sets of only themselves)
-            var fs = FirstSets.ToDictionary(x => x.Key, x => new OrderedSet<string>(x.Value));
+            var fs = FirstSets.Concat(new[] {new KeyValuePair<string, ISet<string>>("#", epsilon)})
+                .ToDictionary(x => x.Key, x => new OrderedSet<string>(x.Value));
             foreach (var term in Terms)
             {
                 fs.Add(term, new OrderedSet<string> {term});
@@ -284,11 +285,12 @@ namespace CsEarley
                 // Turn "a -> bcd efg hij" into ["a", "bcd efg hij"]
                 // This should have two elements, the nonterm and the right-hand-side
                 var spl = rule.Split("->").Select(x => x.Trim()).ToList();
-                
+
                 if (spl.Count < 2)
                 {
                     throw new ArgumentException($"Each rule needs to have a '->'. '{rule}' does not.");
                 }
+
                 if (spl.Count > 2)
                 {
                     throw new ArgumentException($"Each rule can only have one '->'. '{rule}' does not.");
@@ -364,7 +366,7 @@ namespace CsEarley
             Nonterms = nonterms;
             // Get a set of all symbols in the grammar. The ones that are not nonterminals are automatically terminals.
             Terms = new OrderedSet<string>(
-                this.SelectMany(x => x.Value).ToHashSet().Where(x => !Nonterms.Contains(x)));
+                this.SelectMany(x => x.Value).Where(x => !Nonterms.Contains(x)).Except(new[] {"#"}));
             Symbols = new OrderedSet<string>(Terms.Union(Nonterms));
 
             EpsilonProducers = ComputeEpsilonProducers();
