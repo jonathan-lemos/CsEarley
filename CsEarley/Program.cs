@@ -8,13 +8,12 @@ namespace CsEarley
         {
             var gram = new Grammar(new[]
             {
-                "E -> E + T | T",
-                "T -> T * F | F",
-                "F -> ( E ) | num"
+                "S -> A S | #",
+                "A -> if A | if A else A | ;",
             });
 
             var parser = new Parser(gram);
-            var tokens = parser.Lex("  (2+ 3 ) * 4  ", new[] {("num", "[0-9]+")}).Match(
+            var tokens = parser.Lex("if if ; else ;", new[] {("num", "[0-9]+")}).Match(
                 list => list,
                 ex => throw ex
             );

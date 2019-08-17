@@ -214,14 +214,32 @@ int main () {
                     "B -> b C b",
                     "C -> c C | #"
                 }),
-                new (string, string)[] {},
+                new (string, string)[] { },
                 new[]
                 {
-                    ("abccbabb", new[] {("a", "a"), ("b", "b"), ("c", "c"), ("c", "c"), ("b", "b"), ("a", "a"), ("b", "b"), ("b", "b")}),
+                    ("abccbabb",
+                        new[]
+                        {
+                            ("a", "a"), ("b", "b"), ("c", "c"), ("c", "c"), ("b", "b"), ("a", "a"), ("b", "b"),
+                            ("b", "b")
+                        }),
                     ("abb", new[] {("a", "a"), ("b", "b"), ("b", "b")}),
-                    ("", new (string, string)[] {})
+                    ("", new (string, string)[] { })
                 }
-            )
+            ),
+            new TestContext(
+                new Grammar(new[]
+                {
+                    "S -> A S | #",
+                    "A -> if A | if A else A | ;",
+                }),
+                new (string, string)[] {}, 
+                new[]
+                {
+                    ("if ;", new[] {("if", "if"), (";", ";")}),
+                    ("if if ; else ;", new[] {("if", "if"), ("if", "if"), (";", ";"), ("else", "else"), (";", ";")})
+                }
+            ),
         };
 
         private static TestContext[] _lexFailContexts =

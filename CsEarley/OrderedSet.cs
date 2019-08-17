@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace CsEarley
 {
@@ -191,6 +192,8 @@ namespace CsEarley
                 }
             }
         }
+
+        public T this[T index] => _dict[index].Value;
 
         public void UnionWith(IEnumerable<T> enumerable)
         {

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Sockets;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
 using CsEarley.Functional;
@@ -110,6 +111,16 @@ namespace CsEarley
                 return new Item(Nonterm, Rule, DotPos + 1);
             }
 
+            /// <summary>
+            /// Returns a new item with the dot moved backward one token.
+            /// </summary>
+            /// Undefined behavior if you advance an item with <c>DotPos == 0</c>.
+            public Item Retarded()
+            {
+                Debug.Assert(DotPos > 0, "Cannot retard at item at the start.");
+                return new Item(Nonterm, Rule, DotPos - 1);
+            }
+
             public override string ToString()
             {
                 return _string;
@@ -202,82 +213,6 @@ namespace CsEarley
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public override string ToString() => Item.ToString();
-        }
-
-        /// <summary>
-        /// An entry within an Earley set (see <see cref="Parser.Parse"/>).
-        /// </summary>
-        private class EarleyItem
-        {
-            /// <summary>
-            /// The <see cref="Item"/> that this <see cref="EarleyItem"/> contains.
-            /// </summary>
-            public readonly Item Item;
-
-            /// <summary>
-            /// The index of the set that created the original version of this <see cref="EarleyItem"/>.
-            /// </summary>
-            /// If this <see cref="EarleyItem"/> contains '<c>S -> A . B C</c>', then this index points to the set that contains '<c>S -> . A B C</c>'.
-            public readonly int Origin;
-
-            /// <summary>
-            /// The index of the set that contains this <see cref="EarleyItem"/>.
-            /// </summary>
-            public readonly int Index;
-
-            /// <summary>
-            /// The <see cref="EarleyItem"/> that created this one.
-            /// </summary>
-            /// If this <see cref="Optional{T}"/> is not set, then this is the first <see cref="EarleyItem"/> in the chain.
-            public readonly Optional<EarleyItem> Prev;
-
-            /// <summary>
-            /// Constructs an <see cref="EarleyItem"/>.
-            /// </summary>
-            /// <param name="item">The <see cref="Item"/> that this <see cref="EarleyItem"/> contains.</param>
-            /// <param name="origin">The index of the set that created the original version of this <see cref="EarleyItem"/>.</param>
-            /// <param name="index">The index of the set that contains this <see cref="EarleyItem"/>.</param>
-            /// <param name="prev"></param>
-            public EarleyItem(Item item, int origin, int index, EarleyItem prev)
-            {
-                (Item, Origin, Index, Prev) = (item, origin, index, prev ?? new Optional<EarleyItem>());
-            }
-
-            /// <summary>
-            /// Produces the item and the origin of this EarleyItem.
-            /// </summary>
-            /// <param name="item"><see cref="EarleyItem.Item"/></param>
-            /// <param name="origin"><see cref="EarleyItem.Origin"/></param>
-            public void Deconstruct(out Item item, out int origin)
-            {
-                (item, origin) = (Item, Origin);
-            }
-
-            protected bool Equals(EarleyItem other)
-            {
-                return Equals(Item, other.Item) && Origin == other.Origin;
-            }
-
-            public override bool Equals(object obj)
-            {
-                if (ReferenceEquals(null, obj)) return false;
-                if (ReferenceEquals(this, obj)) return true;
-                if (obj.GetType() != GetType()) return false;
-                return Equals((EarleyItem) obj);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    return ((Item != null ? Item.GetHashCode() : 0) * 397) ^ Origin;
-                }
-            }
-
-            public override string ToString()
-            {
-                return $"({Item}, {Origin})";
-            }
         }
 
         /// <summary>
@@ -427,6 +362,112 @@ namespace CsEarley
             return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
         }
 
+        private class EarleyTable
+        {
+            public readonly int Count;
+
+            public class EarleyItem
+            {
+                public readonly Item Item;
+                public readonly int Origin;
+                public readonly int Index;
+
+                public EarleyItem(Item item, int origin, int index)
+                {
+                    (Item, Origin, Index) = (item, origin, index);
+                }
+
+                public void Deconstruct(out Item item, out int origin)
+                {
+                    (item, origin) = (Item, Origin);
+                }
+
+                protected bool Equals(EarleyItem other)
+                {
+                    return Item.Equals(other.Item) && Origin == other.Origin;
+                }
+
+                public override bool Equals(object obj)
+                {
+                    if (ReferenceEquals(null, obj)) return false;
+                    if (ReferenceEquals(this, obj)) return true;
+                    if (obj.GetType() != this.GetType()) return false;
+                    return Equals((EarleyItem) obj);
+                }
+
+                public override int GetHashCode()
+                {
+                    unchecked
+                    {
+                        return (Item.GetHashCode() * 397) ^ Origin;
+                    }
+                }
+
+                public override string ToString() => $"({Item}, {Origin}, {Index})";
+            }
+
+            public class InnerSet : IEnumerable<EarleyItem>
+            {
+                private readonly OrderedSet<EarleyItem> _inner;
+
+                private readonly IDictionary<EarleyItem,
+                    ISet<EarleyItem>> _prev;
+
+                public InnerSet()
+                {
+                    _inner = new OrderedSet<EarleyItem>();
+                    _prev =
+                        new Dictionary<EarleyItem, ISet<EarleyItem>>();
+                }
+
+                public IEnumerable<EarleyItem> MutableIterator() => _inner.MutableIterator();
+
+                public IEnumerator<EarleyItem> GetEnumerator() => _inner.GetEnumerator();
+
+                IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+                public void Add(Item item, int origin, int index, EarleyItem prev)
+                {
+                    var newItem = new EarleyItem(item, origin, index);
+                    if (_inner.Contains(newItem))
+                    {
+                        _prev[newItem].Add(prev);
+                    }
+                    else
+                    {
+                        _prev[newItem] = new OrderedSet<EarleyItem> {prev};
+                        _inner.Add(newItem);
+                    }
+                }
+
+                public bool Contains(EarleyItem elem) => _inner.Contains(elem);
+
+                public void _Start_Add(Item item)
+                {
+                    var newItem = new EarleyItem(item, 0, 0);
+                    _inner.Add(newItem);
+                }
+            }
+
+            private readonly IList<InnerSet> sets;
+
+            public EarleyTable(int capacity, Item startRule)
+            {
+                sets = new List<InnerSet>(capacity);
+                for (var i = 0; i < capacity; ++i)
+                {
+                    sets.Add(new InnerSet());
+                }
+
+                sets[0]._Start_Add(startRule);
+                Count = capacity;
+            }
+
+            public InnerSet this[int index] => sets[index];
+
+            public InnerSet Last => this[Count - 1];
+        }
+
         /// <summary>
         /// Builds a parse tree out of a series of tokens and the <see cref="Grammar"/> given in the constructor.
         /// </summary>
@@ -448,23 +489,15 @@ namespace CsEarley
 
             // Create a new start state so it's easier to build the parser
             var newStart = Grammar.Start + "'";
-
-            // Create a table with an empty set for each word, plus one for the final reduce state.
-            var table = new List<OrderedSet<EarleyItem>>();
-            for (var i = 0; i < words.Count + 1; ++i)
-            {
-                table.Add(new OrderedSet<EarleyItem>());
-            }
-
             // Make the start item and the end item. The start item only produces the grammar's actual start
             var startRule = new Item(newStart, new List<string> {Grammar.Start});
-            var endRule = startRule.Advanced();
+            var endRule = new EarleyTable.EarleyItem(startRule.Advanced(), 0, 0);
+
+            // Create a table with an empty set for each word, plus one for the final reduce state.
+            var table = new EarleyTable(words.Count + 1, startRule);
 
             // C# is shit so we need to define epsilon as a separate constant
             var epsilon = new List<string> {"#"};
-
-            // Initialize the first state with the start rule
-            table[0].Add(new EarleyItem(startRule, 0, 0, null));
 
             // Each entry of the table corresponds a token in the input sequence with one extra for the start rule
             // In essence, each (LR(0)) state in the table represents the possible derivation paths at that point
@@ -481,8 +514,7 @@ namespace CsEarley
                         if (item.Rule.SequenceEqual(epsilon))
                         {
                             // Add an item that completes on epsilon
-                            var newItem = new EarleyItem(item.Advanced(), i, i, earleyItem);
-                            table[i].Add(newItem);
+                            table[i].Add(item.Advanced(), i, i, earleyItem);
                         }
                         // Otherwise if the next symbol is a Nonterminal
                         else if (Grammar.Nonterms.Contains(item.Current))
@@ -491,8 +523,7 @@ namespace CsEarley
                             foreach (var prod in Grammar[item.Current])
                             {
                                 // Add a new item for each of those productions (compute the LR(0) closure)
-                                var newItem = new EarleyItem(new Item(item.Current, prod), i, i, earleyItem);
-                                table[i].Add(newItem);
+                                table[i].Add(new Item(item.Current, prod), i, i, earleyItem);
                             }
                         }
                         // If the next symbol is a Terminal
@@ -502,7 +533,7 @@ namespace CsEarley
                             if (i < words.Count && item.Current == words[i].Token)
                             {
                                 // Shift on this token and add it to the next set
-                                table[i + 1].Add(new EarleyItem(item.Advanced(), index, i, earleyItem));
+                                table[i + 1].Add(item.Advanced(), index, i + 1, earleyItem);
                             }
                         }
                     }
@@ -516,8 +547,7 @@ namespace CsEarley
                             if (!tableItem.IsReduce() && tableItem.Current == item.Nonterm)
                             {
                                 // Add it to the current state
-                                var newItem = new EarleyItem(tableItem.Advanced(), tableIndex, i, earleyItem);
-                                table[i].Add(newItem);
+                                table[i].Add(tableItem.Advanced(), tableIndex, i, earleyItem);
                             }
                         }
                     }
@@ -525,24 +555,17 @@ namespace CsEarley
             }
 
             // The last state should have a completed state for our start rule. If it doesn't, then this grammar can't accept the input tokens
-            var finalRule = table.Last().FirstOrDefault(x => x.Item.Equals(endRule));
-            
-            var parsePath = new List<string>{finalRule.Item.ToString()};
-            for (var x = finalRule.Prev; x.IsSet; x = x.Value.Prev)
-            {
-                parsePath.Add(x.Value.Item + "\n");
-            }
-            
-            if (finalRule == null)
+            if (!table.Last.Contains(endRule))
             {
                 return null;
             }
 
+            
             // recursive method that builds the tree based on the path the earley parse took
             // this path is assembled from all the "prev" items starting with the final rule
             // the complete path makes up the "rightmost derivation" of the tokens
             // the ref parameter makes sure the current item updates for all recursive calls of the function
-            TreeNode CompleteRule(ref EarleyItem earleyItem)
+            TreeNode CompleteRule(ref EarleyTable.EarleyItem earleyItem)
             {
                 if (earleyItem.Item.IsReduce())
                 {
@@ -586,10 +609,12 @@ namespace CsEarley
                 return new TreeNode(earleyItem.Item, words[earleyItem.Index].Raw);
             }
 
-            var tree = CompleteRule(ref finalRule);
+            var tree = CompleteRule(ref endRule);
             // The root node produces our actual start symbol.
             // We want to get rid of that topmost node because all it does is produce the actual start of our tree.
             return tree?.Children.First();
+            
+            return null;
         }
 
         public Try<TreeNode, ArgumentException> Parse(string input,
