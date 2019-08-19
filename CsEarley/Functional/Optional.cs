@@ -46,6 +46,6 @@ namespace CsEarley.Functional
         public static explicit operator T(Optional<T> option) => option.Value;
         public static implicit operator bool(Optional<T> option) => option.IsSet;
 
-        public override string ToString() => IsSet ? $"Optional({Value})" : "Optional Empty";
+        public override string ToString() => IsSet ? Value.ToString() : "Optional Empty";
     }
 }

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
+using System.Transactions;
 using CsEarley.Functional;
 
 namespace CsEarley
@@ -120,6 +121,8 @@ namespace CsEarley
                 Debug.Assert(DotPos > 0, "Cannot retard at item at the start.");
                 return new Item(Nonterm, Rule, DotPos - 1);
             }
+
+            public string Previous => Rule[DotPos - 1];
 
             public override string ToString()
             {
@@ -408,16 +411,17 @@ namespace CsEarley
 
             public class InnerSet : IEnumerable<EarleyItem>
             {
+                private readonly EarleyTable _parent;
                 private readonly OrderedSet<EarleyItem> _inner;
 
                 private readonly IDictionary<EarleyItem,
-                    ISet<EarleyItem>> _prev;
+                    Optional<OrderedSet<EarleyItem>>> _prev;
 
-                public InnerSet()
+                public InnerSet(EarleyTable parent)
                 {
                     _inner = new OrderedSet<EarleyItem>();
-                    _prev =
-                        new Dictionary<EarleyItem, ISet<EarleyItem>>();
+                    _prev = new Dictionary<EarleyItem, Optional<OrderedSet<EarleyItem>>>();
+                    _parent = parent;
                 }
 
                 public IEnumerable<EarleyItem> MutableIterator() => _inner.MutableIterator();
@@ -429,24 +433,23 @@ namespace CsEarley
                 public void Add(Item item, int origin, int index, EarleyItem prev)
                 {
                     var newItem = new EarleyItem(item, origin, index);
+
                     if (_inner.Contains(newItem))
                     {
-                        _prev[newItem].Add(prev);
+                        _prev[newItem].Value.Add(prev);
                     }
                     else
                     {
-                        _prev[newItem] = new OrderedSet<EarleyItem> {prev};
+                        _prev[newItem] = prev != null
+                            ? new OrderedSet<EarleyItem> {prev}
+                            : new Optional<OrderedSet<EarleyItem>>();
                         _inner.Add(newItem);
                     }
                 }
 
                 public bool Contains(EarleyItem elem) => _inner.Contains(elem);
 
-                public void _Start_Add(Item item)
-                {
-                    var newItem = new EarleyItem(item, 0, 0);
-                    _inner.Add(newItem);
-                }
+                public IDictionary<EarleyItem, Optional<OrderedSet<EarleyItem>>> Prev => _prev;
             }
 
             private readonly IList<InnerSet> sets;
@@ -456,10 +459,10 @@ namespace CsEarley
                 sets = new List<InnerSet>(capacity);
                 for (var i = 0; i < capacity; ++i)
                 {
-                    sets.Add(new InnerSet());
+                    sets.Add(new InnerSet(this));
                 }
 
-                sets[0]._Start_Add(startRule);
+                sets[0].Add(startRule, 0, 0, null);
                 Count = capacity;
             }
 
@@ -468,13 +471,7 @@ namespace CsEarley
             public InnerSet Last => this[Count - 1];
         }
 
-        /// <summary>
-        /// Builds a parse tree out of a series of tokens and the <see cref="Grammar"/> given in the constructor.
-        /// </summary>
-        /// These tokens can be built out of an input string with <see cref="Parser.Lex"/>.
-        /// <param name="tokens">The tokens to parse.</param>
-        /// <returns>A Try{TreeNode, ArgumentException} containing either the parse tree, or an exception showing why parsing failed.</returns>
-        public Try<TreeNode, ArgumentException> Parse(IEnumerable<(string Token, string Raw)> tokens)
+        private (EarleyTable Table, Item StartRule) _buildParseTable(IEnumerable<(string Token, string Raw)> tokens)
         {
             // This is where the juice goes down, boys
             // The Earley parser is a DYNAMIC PROGRAMMING top-down parser that completes bottom-up
@@ -485,13 +482,12 @@ namespace CsEarley
             // It will prioritize rules that come first in the grammar, meaning for "S -> A | a; A -> a", the Earley parser will derive "S -> A" first
 
             // Make a list of tokens because we need the count
-            var words = new List<(string Token, string Raw)>(tokens);
+            var words = tokens.ToList();
 
             // Create a new start state so it's easier to build the parser
             var newStart = Grammar.Start + "'";
             // Make the start item and the end item. The start item only produces the grammar's actual start
             var startRule = new Item(newStart, new List<string> {Grammar.Start});
-            var endRule = new EarleyTable.EarleyItem(startRule.Advanced(), 0, 0);
 
             // Create a table with an empty set for each word, plus one for the final reduce state.
             var table = new EarleyTable(words.Count + 1, startRule);
@@ -554,67 +550,166 @@ namespace CsEarley
                 }
             }
 
+            return (table, startRule);
+        }
+
+        private Try<IList<EarleyTable.EarleyItem>, ArgumentException> _buildParsePath(
+            (EarleyTable Table, Item StartRule) input, IEnumerable<(string Token, string Raw)> tokens)
+        {
+            var words = tokens.ToList();
+            var (table, startRule) = input;
+            var endRule = new EarleyTable.EarleyItem(startRule.Advanced(), 0, table.Count - 1);
+
             // The last state should have a completed state for our start rule. If it doesn't, then this grammar can't accept the input tokens
             if (!table.Last.Contains(endRule))
             {
-                return null;
+                return new ArgumentException(
+                    "The table does not show a complete derivation (the input string was not accepted).");
             }
 
-            
-            // recursive method that builds the tree based on the path the earley parse took
-            // this path is assembled from all the "prev" items starting with the final rule
-            // the complete path makes up the "rightmost derivation" of the tokens
-            // the ref parameter makes sure the current item updates for all recursive calls of the function
-            TreeNode CompleteRule(ref EarleyTable.EarleyItem earleyItem)
-            {
-                if (earleyItem.Item.IsReduce())
-                {
-                    var children = new List<TreeNode>();
-                    var oldItem = earleyItem.Item;
-                    // for a reduce item, we add a child for each token in that item by recursively calling completeRule
-                    // we go backwards since our derivation path goes from the final state back to the start state
-                    foreach (var token in earleyItem.Item.Rule.Reverse())
-                    {
-                        earleyItem = earleyItem.Prev.Value;
-                        children.Add(CompleteRule(ref earleyItem));
-                    }
+            // The completed path goes here
+            var path = new List<EarleyTable.EarleyItem>();
 
-                    // since we matched the tokens backwards, we reverse the children back to the right order
-                    children.Reverse();
-                    // get rid of any null children
-                    return new TreeNode(oldItem, children.Where(x => x != null).ToList());
+            // The raw tokens we still need to match. We use a stack because we're doing a rightmost derivation, so we match tokens backwards.
+            var tokensToMatch = new Stack<string>();
+            foreach (var word in words)
+            {
+                tokensToMatch.Push(word.Token);
+            }
+
+            // This stack represents the items we need to match
+            // Every time we descend into another rule we push. Every time we return from a rule we pop.
+            var stack = new Stack<EarleyTable.EarleyItem>();
+            stack.Push(endRule);
+
+            while (stack.Count > 0)
+            {
+                var current = stack.Pop();
+                path.Add(current);
+
+                if (table[tokensToMatch.Count].Prev.ContainsKey(current) && !table[tokensToMatch.Count].Prev[current])
+                {
+                    continue;
                 }
 
-                // if this non-reduce item needs to complete a nonterm
-                if (Grammar.Nonterms.Contains(earleyItem.Item.Current))
+                if (current.Item.DotPos == 0)
                 {
-                    // for a non-reduce item, if this is the last item we just return null since it's not important
-                    if (!earleyItem.Prev)
+                    var toMatch = stack.Pop();
+                    if (toMatch.Item.DotPos > 0)
+                    {
+                        var prospect = table[current.Index].Prev[current].Value.First(x => x.Equals(toMatch));
+                        stack.Push(prospect);
+                    }
+                }
+                else
+                {
+                    var toMatchToken = current.Item.Previous;
+                    var target = new EarleyTable.EarleyItem(current.Item.Retarded(), current.Origin, current.Index);
+                    if ((Grammar.Terms.Contains(toMatchToken) && toMatchToken == tokensToMatch.Peek()) ||
+                        toMatchToken == "#")
+                    {
+                        if (toMatchToken != "#")
+                        {
+                            tokensToMatch.Pop();
+                        }
+
+                        var prospect = table[current.Index].Prev[current].Value.Get(target);
+                        stack.Push(prospect);
+                    }
+                    else
+                    {
+                        var prospect = table[current.Index].Prev[current].Value
+                            .First(x => x.Item.Nonterm == toMatchToken);
+                        stack.Push(target);
+                        stack.Push(prospect);
+                    }
+                }
+            }
+
+            return path;
+        }
+
+        private Try<TreeNode, ArgumentException> _buildParseTree(IEnumerable<EarleyTable.EarleyItem> items,
+            IEnumerable<(string Token, string Raw)> tokens)
+        {
+            var words = tokens.ToList();
+
+            using (var enumerator = items.GetEnumerator())
+            {
+                enumerator.MoveNext();
+                var earleyItem = enumerator.Current;
+
+                TreeNode CompleteRule()
+                {
+                    if (earleyItem == null)
                     {
                         return null;
                     }
 
-                    // otherwise, go to the next step in the derivation and recursively completeRule
-                    earleyItem = earleyItem.Prev.Value;
-                    return CompleteRule(ref earleyItem);
+                    if (earleyItem.Item.IsReduce())
+                    {
+                        var children = new List<TreeNode>();
+                        var oldItem = earleyItem.Item;
+                        // for a reduce item, we add a child for each token in that item by recursively calling completeRule
+                        // we go backwards since our derivation path goes from the final state back to the start state
+                        foreach (var token in earleyItem.Item.Rule.Reverse())
+                        {
+                            enumerator.MoveNext();
+                            earleyItem = enumerator.Current;
+                            children.Add(CompleteRule());
+                        }
+
+                        // since we matched the tokens backwards, we reverse the children back to the right order
+                        children.Reverse();
+                        // get rid of any null children
+                        return new TreeNode(oldItem, children.Where(x => x != null).ToList());
+                    }
+
+                    // if this non-reduce item needs to complete a nonterm
+                    if (Grammar.Nonterms.Contains(earleyItem.Item.Current))
+                    {
+                        // otherwise, go to the next step in the derivation and recursively completeRule
+                        enumerator.MoveNext();
+                        earleyItem = enumerator.Current;
+
+                        // for a non-reduce item, if this is the last item we just return null since it's not important
+                        if (earleyItem == null)
+                        {
+                            return null;
+                        }
+
+                        return CompleteRule();
+                    }
+
+                    // if the current token is epsilon
+                    if (earleyItem.Item.Current == "#")
+                    {
+                        return new TreeNode(earleyItem.Item);
+                    }
+
+                    // if this non-reduce item needs to complete a term, then make a new node containing the raw string that token corresponds to
+                    return new TreeNode(earleyItem.Item, words[earleyItem.Index].Raw);
                 }
 
-                // if the current token is epsilon
-                if (earleyItem.Item.Current == "#")
-                {
-                    return new TreeNode(earleyItem.Item);
-                }
-
-                // if this non-reduce item needs to complete a term, then make a new node containing the raw string that token corresponds to
-                return new TreeNode(earleyItem.Item, words[earleyItem.Index].Raw);
+                return CompleteRule();
             }
+        }
 
-            var tree = CompleteRule(ref endRule);
-            // The root node produces our actual start symbol.
-            // We want to get rid of that topmost node because all it does is produce the actual start of our tree.
-            return tree?.Children.First();
-            
-            return null;
+        /// <summary>
+        /// Builds a parse tree out of a series of tokens and the <see cref="Grammar"/> given in the constructor.
+        /// </summary>
+        /// These tokens can be built out of an input string with <see cref="Parser.Lex"/>.
+        /// <param name="tokens">The tokens to parse.</param>
+        /// <returns>A Try{TreeNode, ArgumentException} containing either the parse tree, or an exception showing why parsing failed.</returns>
+        public Try<TreeNode, ArgumentException> Parse(IEnumerable<(string Token, string Raw)> tokens)
+        {
+            var words = tokens.ToList();
+            var res = _buildParseTable(words);
+            var ret = _buildParsePath(res, words).Match(
+                path => _buildParseTree(path, words),
+                ex => ex
+            );
+            return ret;
         }
 
         public Try<TreeNode, ArgumentException> Parse(string input,

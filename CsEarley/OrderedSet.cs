@@ -91,6 +91,15 @@ namespace CsEarley
 
         public T First => _list.First.Value;
 
+        public T Get(T val)
+        {
+            if (!_dict.ContainsKey(val))
+            {
+                throw new ArgumentException("This OrderedSet does not contain the given key.");
+            }
+            return _dict[val].Value;
+        }
+
         public IEnumerator<T> GetEnumerator()
         {
             return _list.GetEnumerator();
