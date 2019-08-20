@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 
 namespace CsEarley
 {
@@ -10,7 +9,7 @@ namespace CsEarley
     /// </summary>
     /// It features amortized O(1) insertions, deletions, and lookups but uses twice the memory as a normal hashset.
     /// <typeparam name="T">The type of the items within this collection.</typeparam>
-    public class OrderedSet<T> : ISet<T>
+    public class OrderedSet<T> : ISet<T>, IReadOnlyOrderedSet<T>
     {
         private readonly Dictionary<T, LinkedListNode<T>> _dict;
         private readonly LinkedList<T> _list;

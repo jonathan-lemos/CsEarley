@@ -1,10 +1,7 @@
-using System;
 using System.Collections.Generic;
-using System.ComponentModel.Design.Serialization;
 using System.Linq;
 using CsEarley;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace CsEarleyTests
 {
@@ -224,6 +221,7 @@ int main () {
                             ("b", "b")
                         }),
                     ("abb", new[] {("a", "a"), ("b", "b"), ("b", "b")}),
+                    ("abcb", new[] {("a", "a"), ("b", "b"), ("c", "c"), ("b", "b")}),
                     ("", new (string, string)[] { })
                 }
             ),
@@ -233,10 +231,11 @@ int main () {
                     "S -> A S | #",
                     "A -> if A | if A else A | ;",
                 }),
-                new (string, string)[] {}, 
+                new (string, string)[] { },
                 new[]
                 {
                     ("if ;", new[] {("if", "if"), (";", ";")}),
+                    ("if ; if ; else ;", new[] {("if", "if"), (";", ";"), ("if", "if"), (";", ";"), ("else", "else"), (";", ";")}),
                     ("if if ; else ;", new[] {("if", "if"), ("if", "if"), (";", ";"), ("else", "else"), (";", ";")})
                 }
             ),
@@ -265,6 +264,65 @@ int main () {
             )
         };
 
+        private static TestContext[] _parseFailContexts =
+        {
+            new TestContext(
+                new Grammar(new[]
+                {
+                    "S -> A B | #",
+                    "A -> A num | num",
+                    "B -> abc | id | #",
+                }),
+                new[]
+                {
+                    ("num", @"\b\d+\b"),
+                    ("id", @"\b[a-z]+\b")
+                },
+                new[]
+                {
+                    ("4 foo 4", new[] {("num", "4"), ("foo", "foo"), ("num", "4")}),
+                    ("foo", new[] {("id", "foo")}),
+                    ("abc", new[] {("abc", "abc")}),
+                    ("abc 4", new[] {("abc", "abc"), ("num", "4")}),
+                }
+            ),
+            new TestContext(
+                new Grammar(new[]
+                {
+                    "S -> A S | #",
+                    "A -> a B",
+                    "B -> b C b",
+                    "C -> c C | #"
+                }),
+                new (string, string)[] { },
+                new[]
+                {
+                    ("abccbab",
+                        new[]
+                        {
+                            ("a", "a"), ("b", "b"), ("c", "c"), ("c", "c"), ("b", "b"), ("a", "a"), ("b", "b"),
+                        }),
+                    ("bb", new[] {("a", "a"), ("b", "b"), ("b", "b")}),
+                    ("abbabbb", new[] {("a", "a"), ("b", "b"), ("b", "b"), ("a", "a"), ("b", "b"), ("b", "b"), ("b", "b")}),
+                    ("abbab", new[] {("a", "a"), ("b", "b"), ("b", "b"), ("a", "a"), ("b", "b")}),
+                    ("abbbb", new[] {("a", "a"), ("b", "b"), ("b", "b"), ("b", "b"), ("b", "b")})
+                }
+            ),
+            new TestContext(
+                new Grammar(new[]
+                {
+                    "S -> A S | #",
+                    "A -> if A | if A else A | ;",
+                }),
+                new (string, string)[] { },
+                new[]
+                {
+                    ("; if", new[] {(";", ";"), ("if", "if")}),
+                    ("if else ;", new[] {("if", "if"),  ("else", "else"), (";", ";")})
+                }
+            )
+        };
+
         private static object[] ContextMap(TestContext[] arr)
         {
             return arr.SelectMany(context => context.TestCases,
@@ -276,6 +334,7 @@ int main () {
         private static object[] _lexPassTestCases = ContextMap(_passContexts);
         private static object[] _lexFailTestCases = ContextMap(_lexFailContexts);
         private static object[] _parsePassTestCases = ContextMap(_passContexts);
+        private static object[] _parseFailTestCases = ContextMap(_parseFailContexts);
 
         [TestCaseSource(nameof(_lexPassTestCases))]
         [Test, Category("Lexer")]
@@ -320,15 +379,46 @@ int main () {
             }
         }
 
+        private bool VerifyChildrenCount(Parser.TreeNode root, Grammar gram)
+        {
+            if (root.Children.Count != root.Item.Rule.Count && root.Item.IsReduce())
+            {
+                return false;
+            }
+
+            foreach (var child in root.Children)
+            {
+                if (!VerifyChildrenCount(child, gram))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+
         [TestCaseSource(nameof(_parsePassTestCases))]
         [Test, Category("Parser")]
         public void ParsePassTest(Grammar g, IEnumerable<(string, string)> patterns, string input,
             IEnumerable<(string Token, string Raw)> expectedTokens)
         {
             new Parser(g).Parse(input, patterns).Match(
-                tree => Assert.AreEqual(expectedTokens, GetTokenSequence(tree)),
+                tree =>
+                {
+                    Assert.True(VerifyChildrenCount(tree, g));
+                    Assert.AreEqual(expectedTokens, GetTokenSequence(tree));
+                },
                 ex => throw ex
             );
+        }
+
+        [TestCaseSource(nameof(_parseFailTestCases))]
+        [Test, Category("Parser")]
+        public void ParseFailTest(Grammar g, IEnumerable<(string, string)> patterns, string input,
+            IEnumerable<(string Token, string Raw)> expectedTokens)
+        {
+            Assert.True(new Parser(g).Parse(input, patterns).IsFailure);
         }
     }
 }

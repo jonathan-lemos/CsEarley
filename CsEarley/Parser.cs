@@ -3,10 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net.Sockets;
-using System.Security.Principal;
 using System.Text.RegularExpressions;
-using System.Transactions;
 using CsEarley.Functional;
 
 namespace CsEarley
@@ -232,6 +229,9 @@ namespace CsEarley
             Grammar = g;
         }
 
+        /// <summary>
+        /// An exception that contains the (bad) tokens the lexer ended up matching.
+        /// </summary>
         public class LexException : Exception
         {
             public readonly IReadOnlyList<(string Token, string Raw)> Tokens;
@@ -449,7 +449,8 @@ namespace CsEarley
 
                 public bool Contains(EarleyItem elem) => _inner.Contains(elem);
 
-                public IDictionary<EarleyItem, Optional<OrderedSet<EarleyItem>>> Prev => _prev;
+                public IDictionary<EarleyItem,
+                    Optional<OrderedSet<EarleyItem>>> Prev => _prev;
             }
 
             private readonly IList<InnerSet> sets;
@@ -471,6 +472,11 @@ namespace CsEarley
             public InnerSet Last => this[Count - 1];
         }
 
+        /// <summary>
+        /// Builds an EarleyTable showing the parsing process of the given tokens through the given grammar.
+        /// </summary>
+        /// <param name="tokens">A list of tokens optionally produced by <see cref="Parser.Lex"/>.</param>
+        /// <returns>A tuple containing the corresponding table and augmented start rule.</returns>
         private (EarleyTable Table, Item StartRule) _buildParseTable(IEnumerable<(string Token, string Raw)> tokens)
         {
             // This is where the juice goes down, boys
@@ -553,6 +559,12 @@ namespace CsEarley
             return (table, startRule);
         }
 
+        /// <summary>
+        /// Takes the EarleyTable and produces the corresponding rightmost derivation.
+        /// </summary>
+        /// <param name="input">The EarleyTable and corresponding start rule produced by <see cref="_buildParseTable"/>.</param>
+        /// <param name="tokens">The tokens passed to <see cref="_buildParseTable"/>.</param>
+        /// <returns>A list corresponding to the rightmost derivation in that table, or an ArgumentException if it could not be made.</returns>
         private Try<IList<EarleyTable.EarleyItem>, ArgumentException> _buildParsePath(
             (EarleyTable Table, Item StartRule) input, IEnumerable<(string Token, string Raw)> tokens)
         {
@@ -584,43 +596,70 @@ namespace CsEarley
 
             while (stack.Count > 0)
             {
+                // Take an item off the stack
                 var current = stack.Pop();
+                // If the index is unknown.
+                if (current.Index == -1)
+                {
+                    // Set it to the index of the last item matched (this is a disgusting bug filled hack please fix)
+                    current = new EarleyTable.EarleyItem(current.Item, current.Origin, path.Last().Index);
+                }
+
+                // Add that item to our path
                 path.Add(current);
 
+                // If this item has no previous element, continue to clear out the remainder of the stack
                 if (table[tokensToMatch.Count].Prev.ContainsKey(current) && !table[tokensToMatch.Count].Prev[current])
                 {
                     continue;
                 }
 
+                // If this item has no previous
                 if (current.Item.DotPos == 0)
                 {
+                    // Pop another item (the one we need to match)
                     var toMatch = stack.Pop();
                     if (toMatch.Item.DotPos > 0)
                     {
+                        // Get the previous element that equals the one we need to match
+                        // This makes sure the index is correct since the index is not included in comparisons
                         var prospect = table[current.Index].Prev[current].Value.First(x => x.Equals(toMatch));
+                        // push it
                         stack.Push(prospect);
                     }
                 }
+                // If this item has a previous
                 else
                 {
+                    // Get that previous token
                     var toMatchToken = current.Item.Previous;
-                    var target = new EarleyTable.EarleyItem(current.Item.Retarded(), current.Origin, current.Index);
+                    // Store the previous item for later
+                    // Index is -1 because we don't know the correct index at the moment
+                    var target = new EarleyTable.EarleyItem(current.Item.Retarded(), current.Origin, -1);
+                    // If that previous token is the next token we need to match or it is epsilon
                     if ((Grammar.Terms.Contains(toMatchToken) && toMatchToken == tokensToMatch.Peek()) ||
                         toMatchToken == "#")
                     {
+                        // Pop the next token if it's not epsilon
                         if (toMatchToken != "#")
                         {
                             tokensToMatch.Pop();
                         }
 
+                        // Get the previous item with the correct index
                         var prospect = table[current.Index].Prev[current].Value.Get(target);
+                        // Push it
                         stack.Push(prospect);
                     }
+                    // If the previous token is a nonterm
                     else
                     {
+                        // Get the first out of the previous set that produces that nonterm
                         var prospect = table[current.Index].Prev[current].Value
                             .First(x => x.Item.Nonterm == toMatchToken);
+                        // Push the target item
                         stack.Push(target);
+                        // Push that previous item
                         stack.Push(prospect);
                     }
                 }
@@ -629,6 +668,12 @@ namespace CsEarley
             return path;
         }
 
+        /// <summary>
+        /// Builds a parse tree out of a rightmost derivation.
+        /// </summary>
+        /// <param name="items">The rightmost derivation produced by <see cref="_buildParsePath"/>.</param>
+        /// <param name="tokens">The tokens given to <see cref="_buildParsePath"/>.</param>
+        /// <returns>The root node of the produced parse tree, or ArgumentException if it could not be produced.</returns>
         private Try<TreeNode, ArgumentException> _buildParseTree(IEnumerable<EarleyTable.EarleyItem> items,
             IEnumerable<(string Token, string Raw)> tokens)
         {

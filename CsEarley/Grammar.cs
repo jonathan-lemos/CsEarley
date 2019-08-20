@@ -27,23 +27,23 @@ namespace CsEarley
         /// <summary>
         /// The terminals (characters that appear in strings) in the grammar.
         /// </summary>
-        public readonly ImmutableOrderedSet<string> Terms;
+        public readonly IReadOnlyOrderedSet<string> Terms;
 
         /// <summary>
         /// The nonterminals (characters that produce patterns) in the grammar.
         /// </summary>
-        public readonly ImmutableOrderedSet<string> Nonterms;
+        public readonly IReadOnlyOrderedSet<string> Nonterms;
 
         /// <summary>
         /// The symbols (terminals + nonterminals) in the grammar.
         /// </summary>
-        public readonly ImmutableOrderedSet<string> Symbols;
+        public readonly IReadOnlyOrderedSet<string> Symbols;
 
         /// <summary>
         /// The nonterminals that can produce epsilon (empty string).
         /// </summary>
         /// Epsilon is represented as '#'.
-        public readonly ImmutableOrderedSet<string> EpsilonProducers;
+        public readonly IReadOnlyOrderedSet<string> EpsilonProducers;
 
         /// <summary>
         /// The terminals that can appear first in a production of each nonterminal.
@@ -67,7 +67,7 @@ namespace CsEarley
         /// The IList{string} is the list of symbols that need to be met.
         public IEnumerable<KeyValuePair<string, IList<string>>> Productions => _prods;
 
-        private ImmutableOrderedSet<string> ComputeEpsilonProducers()
+        private IReadOnlyOrderedSet<string> ComputeEpsilonProducers()
         {
             // "#" is the epsilon token because we can't type the actual epsilon.
             var epsilon = new OrderedSet<string> {"#"};
