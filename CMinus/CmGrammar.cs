@@ -5,10 +5,10 @@ namespace CMinus
         public static readonly (string, string)[] Patterns =
         {
             ("RELOP", @">=|<=|==|!=|>|<"),
-            ("ADDOP", @"+|-"),
+            ("ADDOP", @"\+|-"),
             ("MULOP", @"\*|/"),
             ("INT", @"\d+"),
-            ("FLOAT", @"\d+\.\d+?([eE]\d+)?"),
+            ("FLOAT", @"\d+(\.\d+)?([eE][+\-]?\d+)?"),
             ("ID", @"[A-Za-z]+")
         };
 

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -46,7 +45,10 @@ namespace CMinus
                     }
                     else if (match.Value == "//")
                     {
-                        return ret;
+                        if (commentCtr == 0)
+                        {
+                            return ret;
+                        }
                     }
                     else
                     {

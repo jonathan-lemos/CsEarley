@@ -302,7 +302,7 @@ namespace CsEarley
                     foreach (var (token, pattern) in finalPatterns)
                     {
                         var match = pattern.Match(word, currentPos);
-                        if (match.Success && match.Index == currentPos && match.Length > longest.Token.Length)
+                        if (match.Success && match.Index == currentPos && match.Length > longest.Raw.Length)
                         {
                             longest = (Token: token, Raw: match.Value);
                         }
@@ -337,7 +337,7 @@ namespace CsEarley
         public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<(string Token, string Pattern)> patterns)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))));
+            return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern, RegexOptions.ECMAScript))));
         }
 
         public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
@@ -349,7 +349,7 @@ namespace CsEarley
         public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<KeyValuePair<string, string>> patterns)
         {
-            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
+            return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value, RegexOptions.ECMAScript))));
         }
 
         private class EarleyTable
