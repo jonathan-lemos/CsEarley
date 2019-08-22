@@ -230,19 +230,6 @@ namespace CsEarley
         }
 
         /// <summary>
-        /// An exception that contains the (bad) tokens the lexer ended up matching.
-        /// </summary>
-        public class LexException : Exception
-        {
-            public readonly IReadOnlyList<(string Token, string Raw)> Tokens;
-
-            public LexException(string msg, IEnumerable<(string Token, string Raw)> tokens) : base(msg)
-            {
-                Tokens = new List<(string Token, string Raw)>(tokens);
-            }
-        }
-
-        /// <summary>
         /// Lexes a raw input string, returning a list of tokens.
         /// </summary>
         /// Tokens are always separated by any whitespace, meaning <c>"A B"</c> would match the <c>"A"</c> and <c>"B"</c> separately.
@@ -275,7 +262,7 @@ namespace CsEarley
         /// </para>
         /// For example: a left parentheses might match as <c>(Token: "(", Raw: "(")</c>, while a number might match as <c>(Token: "number", Raw: "69")</c>.
         /// </returns>
-        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+        public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<(string Token, Regex Pattern)> patterns = null)
         {
             // split the input on any whitespace so the regex engine doesn't have to scan one huge input over and over again
@@ -341,25 +328,25 @@ namespace CsEarley
                 }
             }
 
-            return badIndex.Match<Try<IList<(string Token, string Raw)>, LexException>>(
-                x => new LexException($"Bad token starting with '{x.Word}' (index {x.Index}).", ret),
+            return badIndex.Match<Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>>>(
+                x => new ValuedException<IList<(string Token, string Raw)>>($"Bad token starting with '{x.Word}' (index {x.Index}).", ret),
                 () => ret
             );
         }
 
-        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+        public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<(string Token, string Pattern)> patterns)
         {
             return Lex(input, patterns.Select(x => (Token: x.Token, Pattern: new Regex(x.Pattern))));
         }
 
-        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+        public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<KeyValuePair<string, Regex>> patterns)
         {
             return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: x.Value)));
         }
 
-        public Try<IList<(string Token, string Raw)>, LexException> Lex(string input,
+        public Try<IList<(string Token, string Raw)>, ValuedException<IList<(string Token, string Raw)>>> Lex(string input,
             IEnumerable<KeyValuePair<string, string>> patterns)
         {
             return Lex(input, patterns.Select(x => (Token: x.Key, Pattern: new Regex(x.Value))));
@@ -736,7 +723,9 @@ namespace CsEarley
                     return new TreeNode(earleyItem.Item, words[earleyItem.Index].Raw);
                 }
 
-                return CompleteRule();
+                // The top node has our augmented start rule producing the actual start rule
+                // We get rid of the top node by returning the first (only) child
+                return CompleteRule().Children.First();
             }
         }
 

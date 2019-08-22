@@ -54,4 +54,14 @@ namespace CsEarley.Functional
         public override string ToString() =>
             IsSuccess ? $"Success({Value})" : $"Failure({Exception})";
     }
+
+    public class ValuedException<T> : Exception
+    {
+        public readonly T Value;
+
+        public ValuedException(string msg, T value) : base(msg)
+        {
+            Value = value;
+        }
+    }
 }
